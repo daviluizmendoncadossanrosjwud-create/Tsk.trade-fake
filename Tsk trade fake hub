@@ -1,0 +1,2306 @@
+local P=game:GetService("Players")
+local TW=game:GetService("TweenService")
+local RS=game:GetService("RunService")
+local RS2=game:GetService("ReplicatedStorage")
+local CS=game:GetService("CollectionService")
+local HS=game:GetService("HttpService")
+local UI=game:GetService("UserInputService")
+local LP=P.LocalPlayer
+local PG=LP.PlayerGui
+local CAM=workspace.CurrentCamera
+
+local A_sh,A_d,M_d,T_d
+local R_d,PlotC,AnimSync,FOH
+local NumU,Grad,Trove,Notif
+local ModA,AnimA
+
+local function wc(p,n,t)
+	local o,r=pcall(function() return p:WaitForChild(n,t or 8) end)
+	return o and r or nil
+end
+local function req(i)
+	if not i then return nil end
+	local o,r=pcall(require,i);return o and r or nil
+end
+task.spawn(function()
+	local Sh=wc(RS2,"Shared")
+	local Da=wc(RS2,"Datas")
+	local Co=wc(RS2,"Controllers")
+	local Ut=wc(RS2,"Utils")
+	local Pa=wc(RS2,"Packages")
+	local Mo=wc(RS2,"Models")
+	local An=wc(RS2,"Animations")
+	if Sh then A_sh=req(wc(Sh,"Animals",6)) end
+	if Da then
+		A_d=req(wc(Da,"Animals",6))
+		M_d=req(wc(Da,"Mutations",6))
+		T_d=req(wc(Da,"Traits",6))
+		R_d=req(wc(Da,"Rarities",6))
+	end
+	if Co then
+		PlotC=req(wc(Co,"PlotController",6))
+		AnimSync=req(wc(Co,"AnimationSyncController",6))
+		FOH=req(wc(Co,"FastOverheadController",6))
+		Notif=req(wc(Co,"NotificationController",6))
+	end
+	if Ut then NumU=req(wc(Ut,"NumberUtils",6)) end
+	if Pa then
+		Grad=req(wc(Pa,"Gradients",6))
+		Trove=req(wc(Pa,"Trove",6))
+	end
+	if Mo then ModA=wc(Mo,"Animals",10) end
+	if An then AnimA=wc(An,"Animals",10) end
+end)
+local FNT=Font.new("rbxasset://fonts/families/GothamSSm.json",Enum.FontWeight.ExtraBold,Enum.FontStyle.Normal)
+local PAD_H=0.05
+local SF="TskFakeTrade_Brainrots.json"
+
+local function ni(c,p,par)
+	local o=Instance.new(c)
+	for k,v in pairs(p) do o[k]=v end
+	if par then o.Parent=par end
+	return o
+end
+local function ast(p,t,c)
+	for _,ch in p:GetChildren() do if ch:IsA("UIStroke") then ch:Destroy() end end
+	return ni("UIStroke",{Color=c or Color3.new(0,0,0),Thickness=t or 1.296,Transparency=0},p)
+end
+local function ac(p,r)
+	for _,ch in p:GetChildren() do if ch:IsA("UICorner") then ch:Destroy() end end
+	return ni("UICorner",{CornerRadius=UDim.new(0,r or 8)},p)
+end
+
+local T_SUF={["John Pork"]=" is Calling...",}
+local function dispName(bn,tr)
+	if not tr or type(tr)~="table" or #tr==0 then return bn end
+	for _,t in ipairs(tr) do
+		local s=T_SUF[t]
+		if s then return bn..s end
+	end
+	return bn
+end
+
+local EMO_B=utf8.char(0x23F0)
+local EMO_P=utf8.char(0x1F389)
+local EMO_AM=utf8.char(0x2795).." Add More"
+local EMO_LT=utf8.char(0x274C).." L Trade"
+local EMO_LO=utf8.char(0x1F9FE).." Last Offer"
+local EMO_D=utf8.char(0x1F91D).." Deal?"
+local EMO_F=utf8.char(0x2705).." Fair Trade"
+local EMO_NT=utf8.char(0x1F645).." No Thanks"
+
+local function playSnd()
+	local o,r=pcall(function() return RS2.Sounds.Sfx.Activated end)
+	if o and r then pcall(function() r:Play() end) end
+end
+
+local blur=CAM:FindFirstChild("Blur")
+if not blur then
+	blur=Instance.new("BlurEffect")
+	blur.Size=0
+	blur.Name="Blur"
+	blur.Parent=CAM
+end
+local bld=0.5
+local tweenConn
+
+local function hideUI(state)
+	if tweenConn then tweenConn:Disconnect() end
+	pcall(function()
+		local g=LP.PlayerGui:WaitForChild("LeftCenter",3):WaitForChild("LeftCenter",3):WaitForChild("Buttons",3)
+		g.Visible=not state
+	end)
+	local sf=CAM.FieldOfView
+	local tf=state and 60 or 70
+	local bs=blur.Size
+	local bt=state and 12 or 0
+	local el=0
+	local dur=0.5
+	tweenConn=RS.RenderStepped:Connect(function(dt)
+		el=el+dt
+		local a=math.clamp(el/dur,0,1)
+		CAM.FieldOfView=sf+(tf-sf)*a
+		local ba=math.clamp(el/bld,0,1)
+		blur.Size=bs+(bt-bs)*ba
+		if a>=1 and ba>=1 then
+			tweenConn:Disconnect()
+			tweenConn=nil
+		end
+	end)
+end
+
+local SPD_N=34
+local SPD_G=15
+local HOLD_AID="rbxassetid://71186871415348"
+if not _G.SpawnedAnimals then _G.SpawnedAnimals={} end
+local AllSlots={}
+
+if _G.HideInvites==true then
+	task.spawn(function()
+		local pl=P.LocalPlayer
+		local df=pl.PlayerGui:FindFirstChild("DuelsMachinePrompt")
+		if not df then df=pl.PlayerGui:WaitForChild("DuelsMachinePrompt",10) end
+		if df then
+			local pr=df:FindFirstChild("DuelsMachinePrompt")
+			if not pr then pr=df:WaitForChild("DuelsMachinePrompt",5) end
+			if pr then pr.ChildAdded:Connect(function(ch) ch:Destroy() end) end
+		end
+	end)
+end
+
+local SUF={{1e18,"Qi"},{1e15,"Qa"},{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}}
+local function fmt(n)
+	if NumU then
+		local o,r=pcall(function() return NumU:ToString(n) end)
+		if o and r then return "$"..r end
+	end
+	if not n then return "$0" end
+	for _,p in ipairs(SUF) do
+		local d,s=p[1],p[2]
+		if math.abs(n)>=d then
+			local v=n/d
+			if v<100 then return string.format("$%.1f%s",v,s)
+			else return string.format("$%.0f%s",v,s) end
+		end
+	end
+	return string.format("$%.0f",n)
+end
+local function fmt1(n)
+	if not n or n==0 then return "$0" end
+	if NumU then
+		local o,r=pcall(function() return NumU:ToString(n,1) end)
+		if o and r then return "$"..r end
+	end
+	local s2={{1e24,"Tvg"},{1e21,"Dvg"},{1e18,"Qi"},{1e15,"Qa"},{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}}
+	for _,p in ipairs(s2) do
+		local d,s=p[1],p[2]
+		if math.abs(n)>=d then
+			local v=n/d
+			local fl=math.floor(v*10)/10
+			local str=string.format("%.1f",fl):gsub("%.0$","")
+			return "$"..str..s
+		end
+	end
+	return "$"..math.floor(n)
+end
+
+-- Implemente sua funÃ§Ã£o para pegar brainrots aqui :)
+local function getBrainrots()
+	-- Implemente sua funÃ§Ã£o para pegar brainrots aqui :)
+	return {}
+end
+
+local function invalCache()
+	-- no cache needed
+end
+
+local function slotOcc(n)
+	if AllSlots[n] then return true end
+	if _G.SpawnedAnimals and _G.SpawnedAnimals[n] then return true end
+	local br=getBrainrots()
+	if br[n] then return true end
+	return false
+end
+
+local function saveData()
+	local data={slots={},version=2}
+	for s,inf in pairs(AllSlots) do
+		data.slots[tostring(s)]={index=inf.index,mutation=inf.mutation,traits=inf.traits,spawnedAt=os.clock()}
+	end
+	local o,j=pcall(HS.JSONEncode,HS,data)
+	if o then pcall(writefile,SF,j) end
+end
+
+local function loadSave()
+	local o,r=pcall(readfile,SF)
+	if not o or not r or r=="" then return nil end
+	local o2,d=pcall(HS.JSONDecode,HS,r)
+	if o2 and d and d.slots then return d.slots end
+	return nil
+end
+
+local function delSave()
+	pcall(writefile,SF,"")
+end
+
+local function monGUI(idx)
+	local pl=P.LocalPlayer
+	repeat task.wait() until pl.PlayerGui and pl.PlayerGui:FindFirstChild("Index")
+	task.spawn(function()
+		while true do
+			task.wait(0.1)
+			local o,it=pcall(function()
+				local ig=pl.PlayerGui:FindFirstChild("Index")
+				if not ig then return nil end
+				local ifr=ig:FindFirstChild("Index")
+				if not ifr then return nil end
+				local m=ifr:FindFirstChild("Main")
+				if not m then return nil end
+				local c=m:FindFirstChild("Content")
+				if not c then return nil end
+				local h=c:FindFirstChild("Holder")
+				if not h then return nil end
+				local l=h:FindFirstChild("List")
+				if not l then return nil end
+				return l:FindFirstChild(idx)
+			end)
+			if o and it then
+				pcall(function()
+					local vp=it:FindFirstChild("ViewportFrame")
+					if vp then vp.ImageColor3=Color3.fromRGB(255,255,255) end
+					local nl=it:FindFirstChild("NameLabel")
+					if nl then nl.Visible=true end
+				end)
+			end
+		end
+	end)
+end
+
+local function buildInv()
+	local inv={}
+	for s,inf in pairs(AllSlots) do
+		local cs="$?/s"
+		if A_sh and NumU then
+			local o,g=pcall(function() return A_sh:GetGeneration(inf.index,inf.mutation,inf.traits) end)
+			if o and g then cs=fmt(g).."/s" end
+		end
+		local bn=(A_d and A_d[inf.index] and A_d[inf.index].DisplayName) or inf.index
+		inv[s]={DisplayName=dispName(bn,inf.traits or {}),OriginalIndex=inf.index,Cash=cs,Traits=inf.traits or {},Mutation=inf.mutation or "",_slot=s,_fromLocal=false,_isServer=false}
+	end
+	local sv=getBrainrots()
+	for s,an in pairs(sv) do
+		if not inv[s] then
+			local cs="$?/s"
+			if A_sh and NumU then
+				local o,g=pcall(function() return A_sh:GetGeneration(an.Index,an.Mutation,an.Traits) end)
+				if o and g then cs=fmt(g).."/s" end
+			end
+			local bn=(A_d and A_d[an.Index] and A_d[an.Index].DisplayName) or an.Index
+			inv[s]={DisplayName=dispName(bn,an.Traits or {}),OriginalIndex=an.Index,Cash=cs,Traits=an.Traits or {},Mutation=an.Mutation or "",_slot=s,_fromLocal=false,_isServer=true}
+		end
+	end
+	return inv
+end
+
+local vpClean={}
+local function setupVP(vp,idx,mut)
+	if vpClean[vp] then pcall(vpClean[vp]); vpClean[vp]=nil end
+	vp:ClearAllChildren()
+	if A_sh and A_sh.AttachOnViewportWithOptimizations then
+		local o,cl=pcall(function() return A_sh:AttachOnViewportWithOptimizations(idx,vp,nil,mut) end)
+		if o and cl then vpClean[vp]=cl; return end
+	end
+	if not ModA then return end
+	local tmp=ModA:FindFirstChild(idx)
+	if not tmp then return end
+	local cam=Instance.new("Camera")
+	cam.Name="Camera"
+	cam.Parent=vp
+	vp.CurrentCamera=cam
+	local wm=Instance.new("WorldModel")
+	wm.Name="WorldModel"
+	wm.Parent=vp
+	local cl=tmp:Clone()
+	for _,v in cl:GetDescendants() do
+		if v:IsA("Script") or v:IsA("LocalScript") then v:Destroy() end
+		if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then v:Destroy() end
+	end
+	cl.Parent=wm
+	task.spawn(function()
+		task.wait(0.05)
+		local o2,cf,sz=pcall(function() return cl:GetBoundingBox() end)
+		if not o2 or not cf then
+			local pp=cl.PrimaryPart or cl:FindFirstChildOfClass("BasePart")
+			if not pp then return end
+			cf=pp.CFrame
+			sz=pp.Size
+		end
+		for _,v in cl:GetDescendants() do if v:IsA("BasePart") then v.Anchored=true end end
+		local d=math.max(sz.X,sz.Y,sz.Z)*1.6
+		cam.CFrame=CFrame.new(cf.Position+Vector3.new(0,sz.Y*0.1,d))*CFrame.Angles(0,math.pi,0)
+		cam.Focus=CFrame.new(cf.Position+Vector3.new(0,sz.Y*0.1,0))
+	end)
+end
+
+local function buildTraits(fr,names)
+	for _,ch in fr:GetChildren() do if not ch:IsA("UIListLayout") then ch:Destroy() end end
+	if not names or #names==0 then return end
+	local rows={}
+	local cur={}
+	for i,n in ipairs(names) do
+		table.insert(cur,n)
+		if #cur==6 or i==#names then
+			table.insert(rows,cur)
+			cur={}
+		end
+	end
+	for ri,row in ipairs(rows) do
+		local rfr=ni("Frame",{BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.new(1,0,1/#rows,0),LayoutOrder=ri},fr)
+		ni("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,HorizontalAlignment=Enum.HorizontalAlignment.Center,VerticalAlignment=Enum.VerticalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},rfr)
+		for ci,tname in ipairs(row) do
+			local td=T_d and T_d[tname]
+			if td and td.Icon then
+				ni("ImageLabel",{Name=tname,BackgroundTransparency=1,BorderSizePixel=0,Image=td.Icon,ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(1/6,0,1,0),ZIndex=10,LayoutOrder=ci},rfr)
+			end
+		end
+	end
+end
+
+local function createCard(par,disp,cash,traits,slot,mut,bg,stroke,click,onToggle,modelIdx)
+	local defBg=bg or Color3.fromRGB(35,45,50)
+	local defStroke=stroke or Color3.fromRGB(0,0,0)
+	local selBg=Color3.fromRGB(15,50,15)
+	local selStroke=Color3.fromRGB(0,255,0)
+	local fr=ni("Frame",{BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.new(0.237,0,0.688,0)},par)
+	local sp=ni("ImageButton",{Name="Spacer",BackgroundColor3=defBg,BorderSizePixel=0,Position=UDim2.new(0,2,0,2),Size=UDim2.new(0.901,0,0.92,0),Image="",AutoButtonColor=false},fr)
+	ast(sp,1.296,defStroke)
+	local tit=ni("TextLabel",{Name="Title",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.091,0),Size=UDim2.new(0.949,0,0.123,0),Text=disp,TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,ZIndex=2},sp)
+	ast(tit,1.296)
+	local cashL=ni("TextLabel",{Name="Cash",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.531,0,0.9,0),Size=UDim2.new(0.93,0,0.193,0),Text=cash or "",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Right,ZIndex=2},sp)
+	ast(cashL,1.296)
+	local tfr=ni("Frame",{Name="Traits",AnchorPoint=Vector2.new(0.5,0),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.175,0),Size=UDim2.new(0.95,0,0.15,0)},sp)
+	ni("UIListLayout",{FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},tfr)
+	buildTraits(tfr,traits)
+	local vp=ni("ViewportFrame",{AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.541,0),Size=UDim2.new(0.702,0,0.702,0),ZIndex=0},sp)
+	task.spawn(function() setupVP(vp,modelIdx or disp,mut and mut~="" and mut or nil) end)
+	local selected=false
+	local function setSel(state)
+		selected=state
+		sp.BackgroundColor3=state and selBg or defBg
+		ast(sp,1.296,state and selStroke or defStroke)
+	end
+	if click and onToggle then
+		sp.MouseButton1Click:Connect(function()
+			setSel(not selected)
+			onToggle(slot,selected)
+		end)
+	else
+		sp.Active=false
+	end
+	return fr,sp,setSel
+end
+
+local TradeUI={}
+local tradeGui,mainFr,yourSc,otherSc
+local readyFr,readyFr2,timerL,readyBtn,cancelBtn,closeBtn
+local yourSign,otherSign,baseSlots1,baseSlots2,signTB,otherSignTxt
+local otherReady=false,myReady=false,myAcc=false,otherAcc=false
+local tradeOpen=false,accPhase=false,proc=false
+local selSlots={},confSlots={}
+local lastClick=0,clickDelay=1.5
+local activeCountdown=nil,countdownActive=false
+local otherName="Other"
+local signLast=0,signDelay=5
+local cardSel={}
+local curMyInv={}
+local customMySlots=27,customOtherSlots=23
+
+local function hasSel()
+	for _ in pairs(selSlots) do return true end
+	return false
+end
+
+local function stopCount()
+	if activeCountdown then activeCountdown:Disconnect(); activeCountdown=nil end
+	countdownActive=false
+	if timerL then timerL.Text="" end
+end
+
+local function updReadyColor()
+	if not readyBtn then return end
+	if accPhase and myAcc then readyBtn.BackgroundColor3=Color3.fromRGB(112,112,112)
+	elseif not accPhase and myReady then readyBtn.BackgroundColor3=Color3.fromRGB(112,112,112)
+	elseif countdownActive then readyBtn.BackgroundColor3=Color3.fromRGB(112,112,112)
+	elseif accPhase then readyBtn.BackgroundColor3=(hasSel() and not myAcc) and Color3.fromRGB(81,158,86) or Color3.fromRGB(112,112,112)
+	else readyBtn.BackgroundColor3=(hasSel() and not myReady) and Color3.fromRGB(81,158,86) or Color3.fromRGB(112,112,112) end
+end
+
+local function closeTrade()
+	if not tradeOpen then return end
+	tradeOpen=false
+	accPhase=false
+	proc=false
+	countdownActive=false
+	stopCount()
+	hideUI(false)
+	if mainFr then
+		local t=TW:Create(mainFr,TweenInfo.new(0.3,Enum.EasingStyle.Back,Enum.EasingDirection.In),{Position=UDim2.new(0.5,0,-1.5,0)})
+		t:Play()
+		t.Completed:Connect(function()
+			mainFr.Visible=false
+			if tradeGui then tradeGui.Enabled=false end
+		end)
+	end
+end
+
+local function checkComplete()
+	if tradeOpen and myAcc and otherAcc then
+		stopCount()
+		proc=true
+		if readyFr then readyFr.Visible=true end
+		if readyFr2 then readyFr2.Visible=true end
+		if readyBtn then readyBtn.Active=false end
+		if cancelBtn then cancelBtn.Active=false end
+		if closeBtn then closeBtn.Active=false end
+		if timerL then timerL.Text="Processing..." end
+		task.delay(4,function()
+			if not tradeOpen then return end
+			for s in pairs(confSlots) do
+				local inf=AllSlots[s]
+				if inf and inf.trove then
+					AllSlots[s]=nil
+					if _G.SpawnedAnimals then _G.SpawnedAnimals[s]=nil end
+					pcall(function() inf.trove:Destroy() end)
+				else
+					if _G.SpawnedAnimals then _G.SpawnedAnimals[s]=nil end
+					AllSlots[s]=nil
+				end
+			end
+			invalCache()
+			saveData()
+			if Notif then pcall(function() Notif:Success("Trade with @"..otherName.." completed! "..EMO_P) end) end
+			closeTrade()
+		end)
+	end
+end
+
+local function startCount5(onComp)
+	if activeCountdown then activeCountdown:Disconnect(); activeCountdown=nil end
+	countdownActive=true
+	updReadyColor()
+	local rem=5
+	if timerL then timerL.Text=EMO_B..string.format("%.1f",rem).."s Left" end
+	activeCountdown=RS.Heartbeat:Connect(function(dt)
+		if myAcc and otherAcc then
+			activeCountdown:Disconnect()
+			activeCountdown=nil
+			countdownActive=false
+			if timerL then timerL.Text="" end
+			updReadyColor()
+			checkComplete()
+			return
+		end
+		rem=rem-dt
+		if timerL then timerL.Text=EMO_B..string.format("%.1f",math.max(rem,0)).."s Left" end
+		if rem<=0 then
+			activeCountdown:Disconnect()
+			activeCountdown=nil
+			countdownActive=false
+			if timerL then timerL.Text="" end
+			updReadyColor()
+			if onComp then onComp() end
+		end
+	end)
+end
+
+local function resetTimer()
+	if accPhase then startCount5(checkComplete) else startCount5(nil) end
+end
+
+local function updSlotTexts()
+	if not baseSlots1 or not baseSlots2 then return end
+	local sc=0 for _ in pairs(selSlots) do sc=sc+1 end
+	local ic=0 for _ in pairs(curMyInv) do ic=ic+1 end
+	local rem=ic-sc
+	baseSlots1.Text=rem.."/"..(customMySlots or 27)
+	baseSlots2.Text=sc.."/"..(customOtherSlots or 23)
+end
+
+local function clearScroll(sc)
+	for _,ch in sc:GetChildren() do if ch:IsA("Frame") then ch:Destroy() end end
+	cardSel={}
+end
+
+local function populateCards(sc,inv,click)
+	clearScroll(sc)
+	local slots={}
+	for s,data in pairs(inv) do
+		local can=click and not data._isServer
+		table.insert(slots,{slot=s,data=data,can=can})
+	end
+	table.sort(slots,function(a,b) return a.slot<b.slot end)
+	for _,ent in ipairs(slots) do
+		local name=ent.data.DisplayName or tostring(ent.slot)
+		local midx=ent.data.OriginalIndex or ent.data.DisplayName
+		local cash=ent.data.Cash or ""
+		local traits=ent.data.Traits or {}
+		local mut=ent.data.Mutation or ""
+		local bg,st=nil,nil
+		if A_d and A_d[name] and A_d[name].IsSecret then
+			bg=Color3.fromRGB(15,50,15)
+			st=Color3.fromRGB(0,255,0)
+		end
+		local function onToggle(s,isOn)
+			if not tradeOpen or accPhase or ent.data._isServer then return end
+			playSnd()
+			if isOn then
+				local now=tick()
+				if now-lastClick<clickDelay then
+					if Notif then pcall(function() Notif:Error("Please wait before adding another brainrot") end) end
+					local fn=cardSel[s]
+					if fn then fn(false) end
+					return
+				end
+				lastClick=now
+				selSlots[s]=true
+			else
+				selSlots[s]=nil
+				if myReady then
+					myReady=false
+					otherReady=false
+					otherAcc=false
+					if readyBtn then readyBtn.Txt.Text="READY" end
+					if readyFr then readyFr.Visible=false end
+					if readyFr2 then readyFr2.Visible=false end
+				end
+			end
+			updReadyColor()
+			updSlotTexts()
+			resetTimer()
+		end
+		local _,_,setFn=createCard(sc,name,cash,traits,ent.slot,mut,bg,st,ent.can,onToggle,midx)
+		if ent.can then cardSel[ent.slot]=setFn end
+	end
+end
+
+local function populateConfirmed()
+	local confInv={}
+	local cnt=0
+	for s in pairs(confSlots) do
+		if curMyInv[s] then
+			confInv[s]=curMyInv[s]
+			cnt=cnt+1
+		end
+	end
+	clearScroll(yourSc)
+	populateCards(yourSc,confInv,false)
+	if baseSlots1 then baseSlots1.Text=cnt.."/"..(customMySlots or 27) end
+end
+
+local function populateOther()
+	for _,ch in otherSc:GetChildren() do if ch:IsA("Frame") then ch:Destroy() end end
+end
+
+local function buildUI()
+	if tradeGui then tradeGui:Destroy() end
+	cardSel={}
+	tradeGui=ni("ScreenGui",{Name="TradeLiveTrade",Enabled=false,IgnoreGuiInset=true,ResetOnSpawn=false,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},PG)
+	mainFr=ni("Frame",{Name="TradeLiveTrade",AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.6,0,0.6,0),Visible=false},tradeGui)
+	ni("UIAspectRatioConstraint",{AspectRatio=1.75},mainFr)
+	local bg=ni("Frame",{Name="bg",AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.33,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(1,0,1,0),ZIndex=0},mainFr)
+	local head=ni("Frame",{Name="Header",AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,Position=UDim2.new(0.5,0,0.001,0),Size=UDim2.new(1,0,0.152,0)},mainFr)
+	closeBtn=ni("ImageButton",{Name="Close",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Image="rbxassetid://105016554772347",Position=UDim2.new(0.948,0,0.5,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.079,0,0.777,0)},head)
+	local closeTxt=ni("TextLabel",{Name="Txt",BackgroundTransparency=1,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(1,0,0.56,0),FontFace=FNT,Text="X",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true},closeBtn)
+	ast(closeTxt,1.943)
+	local txts=ni("Frame",{Name="Txts",AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.022,0,0.5,0),Size=UDim2.new(0.5,0,1,0)},head)
+	ni("UIListLayout",{Padding=UDim.new(0.035,0),SortOrder=Enum.SortOrder.LayoutOrder,VerticalAlignment=Enum.VerticalAlignment.Center},txts)
+	local txt1=ni("TextLabel",{Name="Txt1",BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,LayoutOrder=1,Size=UDim2.new(0.273,0,0.496,0),Text="Trade",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left},txts)
+	ast(txt1,1.296)
+	local txt2=ni("TextLabel",{Name="Txt2",BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,LayoutOrder=2,Size=UDim2.new(1.722,0,0.298,0),Text="Select Brainrots to offer",TextColor3=Color3.fromRGB(201,201,201),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left},txts)
+	ast(txt2,1.296)
+	local yourPan=ni("Frame",{Name="Your",BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0.154,0),Size=UDim2.new(0.5,0,0.85,0)},mainFr)
+	local ypi=ni("ImageLabel",{Name="PlayerImage",AnchorPoint=Vector2.new(0,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.5,BorderSizePixel=0,LayoutOrder=2,Position=UDim2.new(0.041,0,0.073,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.08,0,0.086,0),ZIndex=2,Image="rbxthumb://type=AvatarHeadShot&id="..LP.UserId.."&w=100&h=100"},yourPan)
+	ast(ypi,0.648)
+	local yourName=ni("TextLabel",{Name="Username",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.32,0,0.071,0),Size=UDim2.new(0.34,0,0.063,0),Text="Your Offer",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},yourPan)
+	ast(yourName,1.296)
+	local bimg1=ni("ImageLabel",{Name="BaseImage",AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,BorderSizePixel=0,Image="rbxassetid://74587977394382",LayoutOrder=2,Position=UDim2.new(0.48,0,0.072,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.1,0,0.12,0),ZIndex=2},yourPan)
+	baseSlots1=ni("TextLabel",{Name="BaseSlots",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.741,0,0.073,0),Size=UDim2.new(0.295,0,0.07,0),Text="0/27",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},yourPan)
+	ast(baseSlots1,1.296)
+	yourSc=ni("ScrollingFrame",{Active=true,AnchorPoint=Vector2.new(0.5,0.5),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(0,0,0,0),Position=UDim2.new(0.504,0,0.556,0),ScrollBarThickness=8,ScrollingDirection=Enum.ScrollingDirection.Y,Size=UDim2.new(0.964,0,0.812,0)},yourPan)
+	ni("UIGridLayout",{CellPadding=UDim2.new(0,0,0,0),CellSize=UDim2.new(0.325,0,0.4,0),SortOrder=Enum.SortOrder.LayoutOrder},yourSc)
+	readyFr=ni("Frame",{Name="Ready",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(57,204,24),BackgroundTransparency=0.75,BorderSizePixel=0,Position=UDim2.new(0.504,0,0.97,0),Size=UDim2.new(0.985,0,0.83,0),Visible=false,ZIndex=5},yourPan)
+	local rfl=ni("TextLabel",{Name="Label",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.85,0,0.188,0),Text="Ready!",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,ZIndex=6},readyFr)
+	ast(rfl,1.943)
+	local otherPan=ni("Frame",{Name="Other",BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.151,0),Size=UDim2.new(0.5,0,0.846,0)},mainFr)
+	local ohs=ni("ImageLabel",{Name="PlayerImage",AnchorPoint=Vector2.new(0,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.5,BorderSizePixel=0,LayoutOrder=2,Position=UDim2.new(0,0,0.083,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.08,0,0.086,0),ZIndex=2},otherPan)
+	ast(ohs,0.648)
+	local otherNameL=ni("TextLabel",{Name="Username",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.363,0,0.078,0),Size=UDim2.new(0.506,0,0.064,0),Text="Other's Offer",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},otherPan)
+	ast(otherNameL,1.296)
+	local bimg2=ni("ImageLabel",{Name="BaseImage",AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,BorderSizePixel=0,Image="rbxassetid://74587977394382",LayoutOrder=2,Position=UDim2.new(0.625,0,0.072,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.1,0,0.12,0),ZIndex=2},otherPan)
+	baseSlots2=ni("TextLabel",{Name="BaseSlots",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.845,0,0.073,0),Size=UDim2.new(0.212,0,0.07,0),Text="0/23",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},otherPan)
+	ast(baseSlots2,1.296)
+	readyBtn=ni("ImageButton",{Name="ReadyButton",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(112,112,112),BorderSizePixel=0,Image="rbxasset://textures/ui/GuiImagePlaceholder.png",ImageTransparency=1,Position=UDim2.new(0.275,0,0.885,0),Size=UDim2.new(0.418,0,0.1,0)},otherPan)
+	ast(readyBtn,0.972)
+	local rt=ni("TextLabel",{Name="Txt",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.9,0,0.7,0),Text="READY",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true},readyBtn)
+	ast(rt,0.972)
+	cancelBtn=ni("ImageButton",{Name="Cancel",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(233,66,66),BorderSizePixel=0,Image="rbxasset://textures/ui/GuiImagePlaceholder.png",ImageTransparency=1,Position=UDim2.new(0.742,0,0.885,0),Size=UDim2.new(0.418,0,0.1,0)},otherPan)
+	ast(cancelBtn,0.972)
+	local ct=ni("TextLabel",{Name="Txt",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.9,0,0.7,0),Text="CANCEL",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true},cancelBtn)
+	ast(ct,0.972)
+	timerL=ni("TextLabel",{Name="Timer",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.943,0),Size=UDim2.new(0.884,0,0.068,0),Text="",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,ZIndex=2},otherPan)
+	ast(timerL,1.296)
+	otherSc=ni("ScrollingFrame",{Active=true,AnchorPoint=Vector2.new(0.5,0.5),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(0,0,0,0),Position=UDim2.new(0.498,0,0.446,0),ScrollBarThickness=8,Size=UDim2.new(0.964,0,0.591,0)},otherPan)
+	ni("UIGridLayout",{CellPadding=UDim2.new(0,0,0,0),CellSize=UDim2.new(0.325,0,0.565,0),SortOrder=Enum.SortOrder.LayoutOrder},otherSc)
+	readyFr2=ni("Frame",{Name="Ready",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(57,204,24),BackgroundTransparency=0.75,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.754,0),Size=UDim2.new(0.98,0,0.611,0),Visible=false,ZIndex=5},otherPan)
+	local rfl2=ni("TextLabel",{Name="Label",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.85,0,0.262,0),Text="Ready!",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,ZIndex=6},readyFr2)
+	ast(rfl2,1.943)
+	yourSign=ni("Frame",{Name="YourSign",AnchorPoint=Vector2.new(1,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(-0.03,0,0.6,0),Size=UDim2.new(0.4,0,1,0),SizeConstraint=Enum.SizeConstraint.RelativeYY},mainFr)
+	ni("UIAspectRatioConstraint",{AspectRatio=0.75},yourSign)
+	local signHold=ni("Frame",{Name="Holder",AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,Position=UDim2.new(0.5,0,0,0),Size=UDim2.new(1,0,0.5,0),ZIndex=2},yourSign)
+	ast(signHold,1.943)
+	ac(signHold,8)
+	local signFr=ni("Frame",{AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.975,0,0.935,0)},signHold)
+	signTB=ni("TextBox",{Active=false,AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,ClearTextOnFocus=false,FontFace=FNT,PlaceholderColor3=Color3.fromRGB(255,255,255),PlaceholderText="Sign",Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(1,0,1,0),Text="Sign",TextColor3=Color3.fromRGB(255,255,255),TextEditable=false,TextSize=25,TextWrapped=true},signFr)
+	ast(signTB,1.619)
+	ni("UITextSizeConstraint",{MaxTextSize=25},signTB)
+	local signPart=ni("Frame",{Name="Part",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(36,45,50),BorderSizePixel=0,Position=UDim2.new(0.5,0,1,0),Size=UDim2.new(0.075,0,0.5,0),Visible=false},yourSign)
+	ast(signPart,1.943)
+	ac(signPart,UDim.new(0.02,0))
+	local signBtns=ni("Frame",{Name="Buttons",AnchorPoint=Vector2.new(0.5,1),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,1.132,0),Size=UDim2.new(1.25,0,0.582,0),ZIndex=2},yourSign)
+	ni("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Wraps=true},signBtns)
+	local msgs={EMO_AM,EMO_LT,EMO_LO,EMO_D,EMO_F,EMO_NT}
+	for _,msg in ipairs(msgs) do
+		local bf=ni("Frame",{BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.new(0.5,0,0.333,0)},signBtns)
+		local btn=ni("TextButton",{AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.9,0,0.75,0),Text=""},bf)
+		ac(btn,8)
+		local bs=ast(btn,1.943)
+		bs.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+		local lbl=ni("TextLabel",{AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.875,0,0.55,0),Text=msg,TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true},btn)
+		ast(lbl,1.943)
+		btn.MouseButton1Click:Connect(function()
+			if not tradeOpen then return end
+			local now=tick()
+			if now-signLast<signDelay then
+				if Notif then pcall(function() Notif:Error("Please wait "..math.ceil(signDelay-(now-signLast)).."s before editing your sign again") end) end
+				return
+			end
+			signLast=now
+			playSnd()
+			signTB.Text=msg
+		end)
+	end
+	local ysi=ni("ImageLabel",{Name="PlayerImage",AnchorPoint=Vector2.new(0,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.5,BorderSizePixel=0,LayoutOrder=2,Position=UDim2.new(0.041,0,-0.12,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.172,0,0.137,0),ZIndex=2,Image="rbxthumb://type=AvatarHeadShot&id="..LP.UserId.."&w=100&h=100"},yourSign)
+	ast(ysi,1.296)
+	local ysn=ni("TextLabel",{Name="Username",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.637,0,-0.12,0),Size=UDim2.new(0.727,0,0.1,0),Text="@"..LP.Name,TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},yourSign)
+	ast(ysn,1.296)
+	otherSign=ni("Frame",{Name="OtherSign",AnchorPoint=Vector2.new(0,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(1.03,0,0.6,0),Size=UDim2.new(0.4,0,1,0),SizeConstraint=Enum.SizeConstraint.RelativeYY},mainFr)
+	ni("UIAspectRatioConstraint",{AspectRatio=0.75},otherSign)
+	local otherHold=ni("Frame",{Name="Holder",AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,Position=UDim2.new(0.5,0,0,0),Size=UDim2.new(1,0,0.5,0),ZIndex=2},otherSign)
+	ast(otherHold,1.943)
+	ac(otherHold,8)
+	local otherFr=ni("Frame",{AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0.975,0,0.935,0)},otherHold)
+	otherSignTxt=ni("TextLabel",{Name="TextBox",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(1,0,1,0),Text="Sign",TextColor3=Color3.fromRGB(255,255,255),TextSize=25,TextWrapped=true},otherFr)
+	ast(otherSignTxt,1.619)
+	ni("UITextSizeConstraint",{MaxTextSize=25},otherSignTxt)
+	local osPart=ni("Frame",{Name="Part",AnchorPoint=Vector2.new(0.5,1),BackgroundColor3=Color3.fromRGB(36,45,50),BorderSizePixel=0,Position=UDim2.new(0.5,0,1,0),Size=UDim2.new(0.075,0,0.5,0)},otherSign)
+	ast(osPart,1.943)
+	ac(osPart,UDim.new(0.02,0))
+	local osi=ni("ImageLabel",{Name="PlayerImage",AnchorPoint=Vector2.new(0,0.5),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.5,BorderSizePixel=0,LayoutOrder=2,Position=UDim2.new(0.041,0,-0.12,0),ScaleType=Enum.ScaleType.Fit,Size=UDim2.new(0.172,0,0.137,0),ZIndex=2},otherSign)
+	ast(osi,1.296)
+	local osn=ni("TextLabel",{Name="Username",AnchorPoint=Vector2.new(0.5,0.5),BackgroundTransparency=1,BorderSizePixel=0,FontFace=FNT,Position=UDim2.new(0.637,0,-0.12,0),Size=UDim2.new(0.727,0,0.1,0),Text="Other",TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=2},otherSign)
+	ast(osn,1.296)
+	closeBtn.MouseButton1Click:Connect(function()
+		if not tradeOpen or proc then return end
+		if timerL and timerL.Text=="Processing..." then return end
+		playSnd()
+		TradeUI.MyPlayerCancel()
+	end)
+	cancelBtn.MouseButton1Click:Connect(function()
+		if not tradeOpen or proc then return end
+		if timerL and timerL.Text=="Processing..." then return end
+		playSnd()
+		TradeUI.MyPlayerCancel()
+	end)
+	readyBtn.MouseButton1Click:Connect(function()
+		if not tradeOpen then return end
+		playSnd()
+		TradeUI.MyReady()
+	end)
+end
+
+function TradeUI.StartTrade(oid)
+	buildUI()
+	curMyInv=buildInv()
+	selSlots={}
+	confSlots={}
+	myReady=false
+	otherReady=false
+	myAcc=false
+	otherAcc=false
+	tradeOpen=true
+	accPhase=false
+	proc=false
+	lastClick=0
+	countdownActive=false
+	otherName="Other"
+	signLast=tick()-signDelay
+	stopCount()
+	populateCards(yourSc,curMyInv,true)
+	populateOther()
+	updSlotTexts()
+	if oid then
+		local o,nm=pcall(function() return P:GetNameFromUserIdAsync(oid) end)
+		if o then
+			otherName=nm
+			local ou=mainFr:FindFirstChild("Other") and mainFr.Other:FindFirstChild("Username")
+			if ou then ou.Text="@"..nm.."'s Offer" end
+			local osn2=otherSign:FindFirstChild("Username")
+			local osi2=otherSign:FindFirstChild("PlayerImage")
+			if osn2 then osn2.Text="@"..nm end
+			if osi2 then osi2.Image="rbxthumb://type=AvatarHeadShot&id="..oid.."&w=100&h=100" end
+		end
+		local oh=mainFr:FindFirstChild("Other") and mainFr.Other:FindFirstChild("PlayerImage")
+		if oh then oh.Image="rbxthumb://type=AvatarHeadShot&id="..(oid or 0).."&w=100&h=100" end
+	end
+	readyFr.Visible=false
+	readyFr2.Visible=false
+	readyBtn.BackgroundColor3=Color3.fromRGB(112,112,112)
+	readyBtn.Txt.Text="READY"
+	timerL.Text=""
+	signTB.Text="Sign"
+	otherSignTxt.Text="Sign"
+	hideUI(true)
+	tradeGui.Enabled=true
+	mainFr.Visible=true
+	mainFr.Position=UDim2.new(0.5,0,-1.5,0)
+	local t=TW:Create(mainFr,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,0,0.5,0)})
+	t:Play()
+	t.Completed:Connect(function()
+		if tradeOpen then startCount5(nil) end
+	end)
+end
+
+function TradeUI.MyReady()
+	if not tradeOpen then return end
+	if countdownActive then return end
+	if not accPhase then
+		if not hasSel() then return end
+		if myReady then return end
+		myReady=true
+		confSlots={}
+		for s in pairs(selSlots) do confSlots[s]=true end
+		updReadyColor()
+		readyFr.Visible=true
+		readyFr.Label.Text="Ready!"
+		if otherReady then
+			accPhase=true
+			readyBtn.Txt.Text="ACCEPT"
+			readyFr.Visible=false
+			readyFr2.Visible=false
+			updReadyColor()
+			populateConfirmed()
+			populateOther()
+			resetTimer()
+		else
+			resetTimer()
+		end
+	else
+		if myAcc then return end
+		myAcc=true
+		updReadyColor()
+		readyFr.Visible=true
+		readyFr.Label.Text="Confirmed!"
+		if myAcc and otherAcc then
+			stopCount()
+			checkComplete()
+		else
+			resetTimer()
+		end
+	end
+end
+
+function TradeUI.OtherPlayerContinue()
+	if not tradeOpen then return end
+	if countdownActive then return end
+	if not accPhase then
+		otherReady=true
+		readyFr2.Visible=true
+		readyFr2.Label.Text="Ready!"
+		if myReady then
+			accPhase=true
+			readyBtn.Txt.Text="ACCEPT"
+			readyFr.Visible=false
+			readyFr2.Visible=false
+			updReadyColor()
+			populateConfirmed()
+			populateOther()
+			resetTimer()
+		else
+			resetTimer()
+		end
+	else
+		if otherAcc then return end
+		otherAcc=true
+		readyFr2.Visible=true
+		readyFr2.Label.Text="Confirmed!"
+		if myAcc and otherAcc then
+			stopCount()
+			checkComplete()
+		else
+			resetTimer()
+		end
+	end
+end
+
+function TradeUI.AddOtherPlayerSignMsg(msg)
+	if not tradeOpen then return end
+	if otherSignTxt then otherSignTxt.Text=msg or "Sign" end
+end
+
+function TradeUI.MyPlayerCancel()
+	if not tradeOpen then return end
+	if Notif then pcall(function() Notif:Error("@"..LP.Name.." canceled") end) end
+	closeTrade()
+end
+
+function TradeUI.OtherPlayerCancel()
+	if not tradeOpen then return end
+	if Notif then pcall(function() Notif:Error("@"..otherName.." canceled") end) end
+	closeTrade()
+end
+
+local function fireClose()
+	local o,g=pcall(function() return PG:WaitForChild("TradePlayerList",1) end)
+	if not o or not g then return end
+	local o2,f=pcall(function() return g:WaitForChild("TradePlayerList",1) end)
+	if not o2 or not f then return end
+	local h=f:FindFirstChild("Header")
+	if not h then return end
+	local cb=h:FindFirstChild("Close")
+	if not cb then return end
+	local sig=cb:FindFirstChildOfClass("BindableEvent") or cb:FindFirstChild("ClickedSignal")
+	if sig then pcall(function() sig:Fire() end)
+	else
+		pcall(function()
+			for _,v in cb:GetDescendants() do
+				if v:IsA("BindableEvent") then v:Fire(); break end
+			end
+		end)
+		pcall(function() cb.MouseButton1Click:Fire() end)
+	end
+	pcall(function() f.Enabled=false end)
+end
+
+task.spawn(function()
+	local o,g=pcall(function() return PG:WaitForChild("TradePlayerList",30) end)
+	if not o or not g then return end
+	local o2,f=pcall(function() return g:WaitForChild("TradePlayerList",10) end)
+	if not o2 or not f then return end
+	local glob=f:FindFirstChild("Global")
+	if not glob then return end
+	local lst=glob:FindFirstChild("List")
+	if not lst then return end
+	local proc={}
+	local function procChild(ch)
+		if proc[ch] then return end
+		proc[ch]=true
+		if ch.Name=="Template" or ch:IsA("UIListLayout") or ch:IsA("UIPadding") then return end
+		task.wait(0.05)
+		if not ch.Parent then return end
+		local fill=ch:FindFirstChild("Fill")
+		if not fill then return end
+		local s2=fill:FindFirstChild("Status2")
+		if s2 then
+			s2.Text="Online"
+			s2.TextColor3=Color3.fromRGB(86,211,74)
+		end
+		local pif=fill:FindFirstChild("PlayerImage")
+		if pif then
+			local sd=pif:FindFirstChild("Status")
+			if sd then sd.BackgroundColor3=Color3.fromRGB(86,211,74) end
+		end
+		local send=fill:FindFirstChild("Send")
+		if not send then return end
+		if send:GetAttribute("Replaced") then return end
+		local un=fill:FindFirstChild("Username")
+		local uid=nil
+		if un then
+			local name=(un.Text or ""):gsub("^@","")
+			local oid,id=pcall(function() return P:GetUserIdFromNameAsync(name) end)
+			if oid then uid=id end
+		end
+		local newSend=send:Clone()
+		newSend.Name=send.Name
+		newSend.Parent=fill
+		newSend.LayoutOrder=send.LayoutOrder
+		newSend.Position=send.Position
+		newSend.Size=send.Size
+		newSend.BackgroundColor3=Color3.fromRGB(81,158,86)
+		ast(newSend,1.101,Color3.new(0,0,0))
+		local stxt=newSend:FindFirstChildOfClass("TextLabel") or newSend:FindFirstChild("Txt")
+		if stxt then stxt.Text="SEND" end
+		send:Destroy()
+		newSend:SetAttribute("Replaced",true)
+		local deb=false
+		newSend.MouseButton1Click:Connect(function()
+			if deb then return end
+			deb=true
+			if stxt then stxt.Text="SENT!" end
+			TW:Create(newSend,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(100,200,100)}):Play()
+			task.wait(3)
+			fireClose()
+			task.wait(0.3)
+			if uid then TradeUI.StartTrade(uid) end
+			task.wait(2)
+			if stxt then stxt.Text="SEND" end
+			TW:Create(newSend,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(81,158,86)}):Play()
+			deb=false
+		end)
+		proc[newSend]=true
+	end
+	for _,c in lst:GetChildren() do task.spawn(procChild,c) end
+	lst.ChildAdded:Connect(function(c) task.spawn(procChild,c) end)
+end)
+
+local spdConn=nil
+local Grab={active=false,index=nil,mutation=nil,traits=nil,handTrove=nil,sourceSlot=nil}
+local PlacePrompts={}
+
+local function setSpd(ts)
+	local c=LP.Character
+	if not c then return end
+	local h=c:FindFirstChildOfClass("Humanoid")
+	if h then h.WalkSpeed=ts end
+	if spdConn then spdConn:Disconnect(); spdConn=nil end
+	if ts==SPD_G then
+		spdConn=RS.RenderStepped:Connect(function()
+			if not Grab.active then
+				if spdConn then spdConn:Disconnect(); spdConn=nil end
+				return
+			end
+			local c2=LP.Character
+			if not c2 then return end
+			local hrp=c2:FindFirstChild("HumanoidRootPart")
+			if not hrp then return end
+			local hum=c2:FindFirstChildOfClass("Humanoid")
+			if not hum then return end
+			if hum.WalkSpeed~=SPD_G then hum.WalkSpeed=SPD_G end
+			local vel=hrp.Velocity
+			local hv=Vector3.new(vel.X,0,vel.Z)
+			if hv.Magnitude>SPD_G then
+				local cl=hv.Unit*SPD_G
+				hrp.Velocity=Vector3.new(cl.X,vel.Y,cl.Z)
+			end
+		end)
+	end
+end
+LP.CharacterAdded:Connect(function(c)
+	local h=c:WaitForChild("Humanoid",5)
+	if h then h.WalkSpeed=SPD_N end
+end)
+
+local function getPlot()
+	if PlotC and PlotC.GetMyPlot then
+		local p=PlotC.GetMyPlot()
+		if p then return p.PlotModel or p end
+	end
+	local plots=workspace:FindFirstChild("Plots")
+	if not plots then return nil end
+	for _,p in plots:GetChildren() do
+		local s=p:FindFirstChild("PlotSign")
+		local y=s and s:FindFirstChild("YourBase")
+		if y and y.Enabled then return p end
+	end
+end
+
+local function getSpawnPart(plot,n)
+	local pod=plot:FindFirstChild("AnimalPodiums")
+	if not pod then return end
+	local p=pod:FindFirstChild(tostring(n))
+	if not p then return end
+	local b=p:FindFirstChild("Base")
+	if not b then return end
+	return b:FindFirstChild("Spawn")
+end
+
+local function getFreeSlots(plot)
+	local pod=plot:FindFirstChild("AnimalPodiums")
+	if not pod then return {} end
+	local t={}
+	for _,p in pod:GetChildren() do
+		local n=tonumber(p.Name)
+		if n and not slotOcc(n) then table.insert(t,n) end
+	end
+	table.sort(t)
+	return t
+end
+
+local function setTransp(cl,a)
+	for _,v in cl:GetDescendants() do
+		if v:IsA("BasePart") then
+			local d=v:GetAttribute("DT")
+			if d==nil then d=v.Transparency; v:SetAttribute("DT",d) end
+			v.Transparency=a~=nil and math.max(d,a) or d
+		end
+	end
+end
+
+local function ppPar(sp) return sp:FindFirstChild("PromptAttachment") or sp end
+
+local function createVis(trove,idx,mut,traits,par)
+	if not Trove or not ModA then return nil,nil,nil end
+	local tmp=ModA:FindFirstChild(idx)
+	if not tmp then return nil,nil,nil end
+	local cl=trove:Clone(tmp)
+	if not cl.PrimaryPart then
+		cl.PrimaryPart=cl:FindFirstChildWhichIsA("BasePart")
+	end
+	if cl.PrimaryPart then cl.PrimaryPart.Anchored=true end
+	cl.Parent=par
+	for _,v in cl:GetDescendants() do
+		if v:IsA("BasePart") then
+			v.CanQuery=false
+			v.CanTouch=false
+			v.CanCollide=false
+			v.Massless=true
+		end
+		if v:IsA("BillboardGui") or v:IsA("SurfaceGui") or v:IsA("ScreenGui") then v:Destroy() end
+		if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then v:Destroy() end
+	end
+	if A_sh then
+		if mut then
+			local c=A_sh:ApplyMutation(cl,idx,mut)
+			if c then trove:Add(c) end
+		end
+		if traits and #traits>0 then
+			local c=A_sh:ApplyTraits(cl,idx,traits)
+			if c then trove:Add(c) end
+		end
+	end
+	local ac=cl:FindFirstChild("AnimationController")
+	if ac then ac:Destroy() end
+	local hum=trove:Add(Instance.new("Humanoid",cl))
+	local anim=trove:Add(Instance.new("Animator",hum))
+	hum.Name="AnimationController"
+	hum.EvaluateStateMachine=false
+	hum.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+	hum.PlatformStand=true
+	hum.Parent=cl
+	return hum,anim,cl
+end
+
+local function playIdle(trove,anim,idx)
+	if not AnimA or not anim then return end
+	local f=AnimA:FindFirstChild(idx)
+	if not f then return end
+	local idle=f:FindFirstChild("Idle")
+	if not idle then return end
+	local tr=anim:LoadAnimation(idle)
+	if not tr then return end
+	tr.Looped=true
+	tr:Play()
+	if AnimSync then
+		local sync=AnimSync:Add(tr)
+		trove:Add(function() sync(); tr:Stop(0); tr:Destroy() end)
+	else
+		trove:Add(function() tr:Stop(0); tr:Destroy() end)
+	end
+end
+
+local FOHStarted=false
+local function ensureFOH()
+	if FOHStarted or not FOH then return end
+	FOHStarted=true
+	FOH.Start()
+end
+
+local function getTopY(cl,prim)
+	local topY=-math.huge
+	for _,v in cl:GetDescendants() do
+		if v:IsA("BasePart") and v.Transparency<0.9 and v.Size.Magnitude>0.1 then
+			local ty=v.Position.Y+v.Size.Y*0.3
+			if ty>topY then topY=ty end
+		end
+	end
+	if topY==-math.huge then return prim.Position.Y+prim.Size.Y*0.3 end
+	return topY
+end
+
+local function createOH(trove,cl,sp,idx,sz,mut,traits)
+	if not A_d or not FOH then return nil,nil end
+	local d=A_d[idx]
+	if not d or d.HideOverhead then return nil,nil end
+	ensureFOH()
+	local prim=cl.PrimaryPart or cl:FindFirstChildWhichIsA("BasePart")
+	if not prim then return nil,nil end
+	local att=cl:FindFirstChild("OVERHEAD_ATTACHMENT",true)
+	if not att then
+		local topY=getTopY(cl,prim)
+		local off=topY-prim.Position.Y
+		off=off*(d.OverheadYOffsetModifier or 1)
+		att=Instance.new("Attachment")
+		att.Name="Info"
+		att.CFrame=CFrame.new(0,off,0)
+		att.Parent=prim
+		trove:Add(att)
+	end
+	local gui,clean=FOH.createFastOverhead({adornee=att,guiTemplate=FOH.GuiTemplates.AnimalOverhead})
+	if clean then trove:Add(clean) end
+	if not gui then return nil,nil end
+	local rar=R_d and R_d[d.Rarity]
+	local bn=d.DisplayName or idx
+	gui.DisplayName.Text=dispName(bn,traits or {})
+	gui.Price.Visible=not d.HidePrice
+	gui.Rarity.Visible=not d.HideRarity
+	if gui.Generation then gui.Generation.Visible=not d.HideGeneration end
+	if NumU and A_sh then
+		local o1,pr=pcall(function() return A_sh:GetPrice(idx,LP) end)
+		if o1 then gui.Price.Text=fmt(pr) end
+		if gui.Generation then
+			local o2,gen=pcall(function() return A_sh:GetGeneration(idx,mut,traits) end)
+			if o2 then gui.Generation.Text=fmt(gen).."/s" end
+		end
+	end
+	if rar then
+		gui.Rarity.Text=d.Rarity
+		gui.Rarity.TextColor3=rar.Color
+		if rar.StrokeColor then
+			local rst=gui.Rarity:FindFirstChildOfClass("UIStroke")
+			if rst then rst.Color=rar.StrokeColor end
+		end
+		if rar.GradientPreset and Grad then trove:Add(Grad.apply(gui.Rarity,rar.GradientPreset)) end
+	end
+	gui.Mutation.Visible=mut~=nil
+	if mut and M_d then
+		local m=M_d[mut]
+		if m then
+			gui.Mutation.RichText=m.UseRichText or false
+			gui.Mutation.Text=m.UseRichText and m.DisplayWithRichText or m.DisplayText
+			if m.GradientPreset and Grad then trove:Add(Grad.apply(gui.Mutation,m.GradientPreset))
+			elseif m.MainColor then gui.Mutation.TextColor3=m.MainColor end
+		end
+	end
+	if traits and #traits>0 and T_d then
+		local tmp=gui.Traits:FindFirstChild("Template")
+		if tmp then
+			for _,t in traits do
+				local td=T_d[t]
+				if td then
+					local ic=tmp:Clone()
+					ic.Image=td.Icon
+					ic.Visible=true
+					ic.Parent=tmp.Parent
+				end
+			end
+			gui.Traits.Visible=true
+		end
+	end
+	return gui,nil
+end
+
+local function setOHGrab(gui,mut,gps)
+	if not gui then return end
+	gui.DisplayName.Visible=false
+	gui.Price.Visible=false
+	gui.Rarity.Visible=false
+	if gui.Traits then gui.Traits.Visible=true end
+	if gui.Generation then
+		gui.Generation.Visible=true
+		if gps then gui.Generation.Text=fmt(gps).."/s" end
+	end
+	gui.Mutation.Visible=mut~=nil
+end
+
+local function setOHFull(gui,data,mut)
+	if not gui then return end
+	gui.DisplayName.Visible=true
+	gui.Price.Visible=not (data and data.HidePrice)
+	gui.Rarity.Visible=not (data and data.HideRarity)
+	gui.Mutation.Visible=mut~=nil
+	if gui.Generation then gui.Generation.Visible=not (data and data.HideGeneration) end
+end
+
+local function cancelGrab(restore)
+	if not Grab.active then return end
+	if Grab.handTrove then Grab.handTrove:Destroy(); Grab.handTrove=nil end
+	Grab.active=false
+	LP:SetAttribute("Stealing",false)
+	if spdConn then spdConn:Disconnect(); spdConn=nil end
+	setSpd(SPD_N)
+	if restore and Grab.sourceSlot then
+		local s=Grab.sourceSlot
+		setTransp(s.clone,nil)
+		setOHFull(s.gui,s.data,s.mutation)
+		s.grabbed=false
+		s.grabPr.ActionText="Grab"
+		s.grabPr:SetAttribute("State","Grab")
+		s.sellPr.Enabled=true
+	end
+	for _,sl in AllSlots do
+		if sl.grabPr and sl.grabPr.Parent then sl.grabPr.Enabled=true end
+		if sl.sellPr and sl.sellPr.Parent then sl.sellPr.Enabled=true end
+	end
+	Grab.sourceSlot=nil
+	local pps=PlacePrompts
+	PlacePrompts={}
+	for _,pp in pps do
+		if pp and pp.Parent then
+			pp.Enabled=false
+			task.defer(function() pcall(function() pp:Destroy() end) end)
+		end
+	end
+end
+
+local function spawnHand(trove,idx,mut,traits)
+	if not Trove then return end
+	local _,_,hc=createVis(trove,idx,mut,traits,workspace)
+	if not hc then return end
+	playIdle(trove,_,idx)
+	local OFF=Vector3.new(-1.4,0.1,0)
+	trove:Add(RS.RenderStepped:Connect(function()
+		local c=LP.Character
+		if not c then return end
+		local hrp=c:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		local hand=c:FindFirstChild("RightHand") or c:FindFirstChild("Right Arm")
+		if not hand then return end
+		local _,ry,_=hrp.CFrame:ToEulerAnglesYXZ()
+		local rot=CFrame.Angles(0,ry,0)
+		hc:PivotTo(CFrame.new(hand.Position+rot*OFF)*rot)
+	end))
+end
+
+local function playHold(trove)
+	local c=LP.Character
+	if not c then return end
+	local h=c:FindFirstChildOfClass("Humanoid")
+	if not h then return end
+	local a=h:FindFirstChildOfClass("Animator")
+	if not a then return end
+	local obj=Instance.new("Animation")
+	obj.AnimationId=HOLD_AID
+	local t=a:LoadAnimation(obj)
+	t.Looped=true
+	t:Play()
+	trove:Add(function() t:Stop(0); t:Destroy(); obj:Destroy() end)
+end
+
+local activePads={}
+
+local function showMoneyNotif(amt)
+	local o,par=pcall(function() return PG:WaitForChild("LeftBottom",3):WaitForChild("LeftBottom",3):WaitForChild("Cashout",3) end)
+	if not o or not par then return end
+	local lbl=ni("TextLabel",{Name="Template",Text="+"..amt,TextColor3=Color3.new(0.05,1,0),TextStrokeColor3=Color3.new(0,0,0),TextStrokeTransparency=1,TextTransparency=0,TextScaled=true,TextSize=14,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Center,FontFace=FNT,Position=UDim2.new(0.01,0,0.98,0),Size=UDim2.new(1,0,0.25,0),AnchorPoint=Vector2.new(0,1),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=1},par)
+	ast(lbl,2.2,Color3.new(0,0,0))
+	pcall(function() RS2.Sounds.Sfx.Cashout:Play() end)
+	task.spawn(function()
+		task.wait(1)
+		for i=1,50 do
+			local a=0.8*(i/50)
+			lbl.TextTransparency=a
+			local st=lbl:FindFirstChildOfClass("UIStroke")
+			if st then st.Transparency=a end
+			task.wait(0.05)
+		end
+		pcall(function() lbl:Destroy() end)
+	end)
+end
+
+local function getPlotMult()
+	local plots=workspace:FindFirstChild("Plots")
+	if not plots then return 1 end
+	for _,p in plots:GetChildren() do
+		local s=p:FindFirstChild("PlotSign")
+		local yb=s and s:FindFirstChild("YourBase")
+		if yb and yb.Enabled then
+			local o,amt=pcall(function() return p.Multiplier.Main.Amount end)
+			if o and amt then
+				local lbl=amt:FindFirstChildWhichIsA("TextLabel") or (amt:IsA("TextLabel") and amt)
+				if lbl then
+					local n=tonumber(lbl.Text:match("[%d%.]+"))
+					if n then return n end
+				end
+			end
+			return 1
+		end
+	end
+	return 1
+end
+
+local function getGen(idx,mut,traits)
+	if not A_sh then return 0 end
+	local o,g=pcall(function() return A_sh:GetGeneration(idx,mut,traits) end)
+	if not o or not g then return 0 end
+	return g*getPlotMult()
+end
+
+local function getClaimMain(plot,podNum)
+	if not plot then return nil end
+	local pod=plot:FindFirstChild("AnimalPodiums")
+	if not pod then return nil end
+	local podium=pod:FindFirstChild(tostring(podNum))
+	if not podium then return nil end
+	local claim=podium:FindFirstChild("Claim")
+	if not claim then return nil end
+	return claim:FindFirstChild("Main")
+end
+
+local function buildCashPad(claimMain,idx,mut,traits,podNum,spawnedAt)
+	if activePads[podNum] then
+		if activePads[podNum].thread then task.cancel(activePads[podNum].thread) end
+		if activePads[podNum].cleanup then pcall(activePads[podNum].cleanup) end
+		if activePads[podNum].bb and activePads[podNum].bb.Parent then activePads[podNum].bb:Destroy() end
+		activePads[podNum]=nil
+	end
+	local att=Instance.new("Attachment")
+	att.Name="CashPadAttachment"
+	att.CFrame=CFrame.new(0,PAD_H,0)
+	att.Parent=claimMain
+	local lblAmt,lblOff,cleanFn
+	local bb
+	local isNew=(spawnedAt==nil)
+	if FOH and FOH.createFastOverhead and FOH.GuiTemplates and FOH.GuiTemplates.CashPad then
+		local o,res,cl=pcall(function() return FOH.createFastOverhead({adornee=att,guiTemplate=FOH.GuiTemplates.CashPad}) end)
+		if o and res then
+			bb=res
+			cleanFn=cl
+			lblAmt=bb:FindFirstChild("CollectAmount",true)
+			lblOff=bb:FindFirstChild("Offline",true)
+			if lblOff then
+				if isNew then lblOff.Visible=false
+				else
+					local gen=getGen(idx,mut,traits)
+					local now=os.clock()
+					local elapsed=now-(spawnedAt or now)
+					local offAmt=math.floor(elapsed)*gen
+					if offAmt>0 then
+						lblOff.RichText=true
+						lblOff.Text=string.format("(Offline Cash: <font color=\"#73ff00\">%s</font>)",fmt1(offAmt))
+						lblOff.Visible=true
+					else lblOff.Visible=false end
+				end
+			end
+		end
+	end
+	if not bb then
+		bb=Instance.new("BillboardGui")
+		bb.Name="CashPad_BB"
+		bb.Active=true
+		bb.AlwaysOnTop=false
+		bb.Size=UDim2.new(0,220,0,80)
+		bb.StudsOffsetWorldSpace=Vector3.new(0,PAD_H,0)
+		bb.MaxDistance=30
+		bb.ZIndexBehavior=Enum.ZIndexBehavior.Global
+		bb.DisplayOrder=100
+		bb.Adornee=att
+		bb.Parent=att
+		local ll=Instance.new("UIListLayout",bb)
+		ll.FillDirection=Enum.FillDirection.Vertical
+		ll.HorizontalAlignment=Enum.HorizontalAlignment.Center
+		ll.VerticalAlignment=Enum.VerticalAlignment.Center
+		ll.SortOrder=Enum.SortOrder.LayoutOrder
+		local function mkL(nm,ord,sy,col,txt)
+			local l=Instance.new("TextLabel",bb)
+			l.Name=nm; l.Size=UDim2.new(1,0,sy,0)
+			l.BackgroundTransparency=1; l.TextScaled=true
+			l.FontFace=FNT; l.TextColor3=col
+			l.Text=txt; l.LayoutOrder=ord
+			local s=Instance.new("UIStroke",l)
+			s.Thickness=1; s.Color=Color3.new(0,0,0)
+			return l
+		end
+		mkL("Collect",1,0.3,Color3.fromRGB(202,255,201),"Coletar")
+		lblAmt=mkL("CollectAmount",2,0.4,Color3.fromRGB(115,255,0),"$0")
+		lblOff=mkL("Offline",3,0.3,Color3.fromRGB(180,255,100),"")
+		if isNew then lblOff.Visible=false
+		else
+			local gen=getGen(idx,mut,traits)
+			local now=os.clock()
+			local elapsed=now-(spawnedAt or now)
+			local offAmt=math.floor(elapsed)*gen
+			if offAmt>0 then
+				lblOff.RichText=true
+				lblOff.Text=string.format("(Offline Cash: <font color=\"#73ff00\">%s</font>)",fmt1(offAmt))
+				lblOff.Visible=true
+			else lblOff.Visible=false end
+		end
+	end
+	activePads[podNum]={bb=att,thread=nil,cleanup=cleanFn,podiumNum=podNum,lastCollect=os.clock()}
+	local pad=activePads[podNum]
+	do
+		local deb=false
+		local conn
+		conn=RS.Heartbeat:Connect(function()
+			if not (pad.bb and pad.bb.Parent) then conn:Disconnect(); return end
+			if deb then return end
+			local char=LP.Character
+			if not char then return end
+			local hrp=char:FindFirstChild("HumanoidRootPart")
+			if not hrp then return end
+			local curClaim=pad.bb.Parent
+			if not curClaim or not curClaim:IsA("BasePart") then return end
+			local dist=(hrp.Position-curClaim.Position).Magnitude
+			if dist<=6 then
+				deb=true
+				local curAmt=lblAmt and lblAmt.Parent and lblAmt.Text or "$0"
+				if curAmt~="$0" and curAmt~="" then pcall(showMoneyNotif,curAmt) end
+				pad.lastCollect=os.clock()
+				if lblAmt and lblAmt.Parent then lblAmt.Text="$0" end
+				if lblOff and lblOff.Parent then lblOff.Visible=false end
+				task.delay(1,function() deb=false end)
+			end
+		end)
+	end
+	local thr=task.spawn(function()
+		while pad.bb and pad.bb.Parent do
+			task.wait(1)
+			if not (pad.bb and pad.bb.Parent) then break end
+			local gen=getGen(idx,mut,traits)
+			local elapsed=os.clock()-(pad.lastCollect or os.clock())
+			local amt=math.floor(elapsed)*gen
+			if lblAmt and lblAmt.Parent then lblAmt.Text=fmt1(amt) end
+		end
+	end)
+	pad.thread=thr
+	return pad.bb
+end
+
+local function removePad(podNum)
+	local pad=activePads[podNum]
+	if pad then
+		if pad.thread then task.cancel(pad.thread) end
+		if pad.bb and pad.bb.Parent then pad.bb:Destroy() end
+		activePads[podNum]=nil
+	end
+end
+
+local function showPPs(plot,srcSlot)
+	for _,sl in AllSlots do if sl~=srcSlot then sl.grabPr.Enabled=false; sl.sellPr.Enabled=false end end
+	local pod=plot:FindFirstChild("AnimalPodiums")
+	if not pod then return end
+	local sv=getBrainrots()
+	for _,podium in pod:GetChildren() do
+		local n=tonumber(podium.Name)
+		if not n then continue end
+		if srcSlot and srcSlot.podNum==n then continue end
+		local isServerOnly=sv[n] and not AllSlots[n]
+		if isServerOnly then continue end
+		local base=podium:FindFirstChild("Base")
+		if not base then continue end
+		local sp=base:FindFirstChild("Spawn")
+		if not sp then continue end
+		local pp=Instance.new("ProximityPrompt")
+		pp.ActionText="Place"
+		local grabbedName=(A_d and A_d[Grab.index] and A_d[Grab.index].DisplayName) or Grab.index
+		pp.ObjectText=dispName(grabbedName,Grab.traits or {})
+		pp.HoldDuration=1.5
+		pp.KeyboardKeyCode=Enum.KeyCode.E
+		pp.RequiresLineOfSight=true
+		pp.MaxActivationDistance=10
+		pp.Style=Enum.ProximityPromptStyle.Custom
+		pp:SetAttribute("State","Place")
+		pp.Parent=ppPar(sp)
+		table.insert(PlacePrompts,pp)
+		pp.Triggered:Connect(function()
+			if not Grab.active then return end
+			local src=Grab.sourceSlot
+			if not src then return end
+			if src.podNum==n then task.defer(cancelGrab,true); return end
+			local dCF=sp:GetPivot()
+			local dSlot=AllSlots[n]
+			if dSlot then
+				local srcOld=src.podNum
+				local dstOld=dSlot.podNum
+				local sSp=src.sp
+				local sCF=sSp:GetPivot()
+				local sN=srcOld
+				dSlot.clone:PivotTo(sCF)
+				dSlot.grabPr.Parent=ppPar(sSp)
+				dSlot.sellPr.Parent=ppPar(sSp)
+				AllSlots[dstOld]=nil
+				dSlot.sp=sSp
+				dSlot.podNum=sN
+				AllSlots[sN]=dSlot
+				_G.SpawnedAnimals[sN]={Index=dSlot.index,Mutation=dSlot.mutation,Traits=dSlot.traits,spawnPart=sSp}
+				src.clone:PivotTo(dCF)
+				src.grabPr.Parent=ppPar(sp)
+				src.sellPr.Parent=ppPar(sp)
+				AllSlots[srcOld]=nil
+				src.sp=sp
+				src.podNum=n
+				AllSlots[n]=src
+				_G.SpawnedAnimals[n]={Index=src.index,Mutation=src.mutation,Traits=src.traits,spawnPart=sp}
+				setTransp(src.clone,nil)
+				setOHFull(src.gui,src.data,src.mutation)
+				src.grabbed=false
+				src.grabPr.ActionText="Grab"
+				src.grabPr:SetAttribute("State","Grab")
+				src.sellPr.Enabled=true
+				local trove=Trove.new()
+				local _,_,newCl=createVis(trove,src.index,src.mutation,src.traits,workspace)
+				if newCl then
+					newCl:PivotTo(src.clone:GetPivot())
+					local oldT=src.trove
+					src.clone:Destroy()
+					src.clone=newCl
+					src.trove=trove
+					playIdle(trove,src.gui,src.index)
+					task.delay(0.1,function() oldT:Destroy() end)
+				end
+				local padSrc=activePads[srcOld]
+				local padDst=activePads[dstOld]
+				activePads[srcOld]=nil
+				activePads[dstOld]=nil
+				if padSrc then
+					local nc=getClaimMain(plot,n)
+					if nc and padSrc.bb then padSrc.bb.Parent=nc end
+					padSrc.podiumNum=n
+					activePads[n]=padSrc
+				end
+				if padDst then
+					local nc=getClaimMain(plot,sN)
+					if nc and padDst.bb then padDst.bb.Parent=nc end
+					padDst.podiumNum=sN
+					activePads[sN]=padDst
+				end
+			else
+				src.clone:PivotTo(dCF)
+				setTransp(src.clone,nil)
+				setOHFull(src.gui,src.data,src.mutation)
+				src.grabPr.Parent=ppPar(sp)
+				src.sellPr.Parent=ppPar(sp)
+				local oldPod=src.podNum
+				_G.SpawnedAnimals[src.podNum]=nil
+				AllSlots[src.podNum]=nil
+				src.sp=sp
+				src.podNum=n
+				AllSlots[n]=src
+				_G.SpawnedAnimals[n]={Index=src.index,Mutation=src.mutation,Traits=src.traits,spawnPart=sp}
+				src.grabbed=false
+				src.grabPr.ActionText="Grab"
+				src.grabPr:SetAttribute("State","Grab")
+				src.sellPr.Enabled=true
+				local trove=Trove.new()
+				local _,_,newCl=createVis(trove,src.index,src.mutation,src.traits,workspace)
+				if newCl then
+					newCl:PivotTo(src.clone:GetPivot())
+					local oldT=src.trove
+					src.clone:Destroy()
+					src.clone=newCl
+					src.trove=trove
+					playIdle(trove,src.gui,src.index)
+					task.delay(0.1,function() oldT:Destroy() end)
+				end
+				local padSrc2=activePads[oldPod]
+				if padSrc2 then
+					local nc=getClaimMain(plot,n)
+					if nc and padSrc2.bb then padSrc2.bb.Parent=nc end
+					padSrc2.podiumNum=n
+					activePads[n]=padSrc2
+					activePads[oldPod]=nil
+				end
+			end
+			saveData()
+			task.defer(cancelGrab,false)
+		end)
+	end
+end
+
+local SpawnStatus
+
+local function doSpawn(plot,idx,mut,traits,spawnedAt)
+	if not Trove then
+		if SpawnStatus then SpawnStatus.Text="Trove unavailable"; SpawnStatus.TextColor3=Color3.fromRGB(255,100,100) end
+		return
+	end
+	local slots=getFreeSlots(plot)
+	if #slots==0 then
+		if SpawnStatus then SpawnStatus.Text="No free slots!"; SpawnStatus.TextColor3=Color3.fromRGB(255,100,100) end
+		return
+	end
+	local slot=slots[1]
+	local sp=getSpawnPart(plot,slot)
+	if not sp then
+		if SpawnStatus then SpawnStatus.Text="Spawn #"..slot.." not found"; SpawnStatus.TextColor3=Color3.fromRGB(255,100,100) end
+		return
+	end
+	local podCF=sp:GetPivot()
+	local data=A_d and A_d[idx]
+	local trove=Trove.new()
+	local _,anim,cl=createVis(trove,idx,mut,traits,workspace)
+	if not cl then
+		trove:Destroy()
+		if SpawnStatus then SpawnStatus.Text="Animal not found: "..idx; SpawnStatus.TextColor3=Color3.fromRGB(255,100,100) end
+		return
+	end
+	local extents=cl:GetExtentsSize()
+	cl:PivotTo(podCF)
+	playIdle(trove,anim,idx)
+	local fullGui,_=createOH(trove,cl,sp,idx,extents,mut,traits)
+	local sellVal=(A_sh and A_sh.GetSellValue) and A_sh:GetSellValue(idx) or 0
+	local ppBase=ppPar(sp)
+	local grabPr=trove:Add(Instance.new("ProximityPrompt"))
+	grabPr.ActionText="Grab"
+	local bn=(data and data.DisplayName) or idx
+	grabPr.ObjectText=dispName(bn,traits or {})
+	grabPr.HoldDuration=1.5
+	grabPr.KeyboardKeyCode=Enum.KeyCode.E
+	grabPr.RequiresLineOfSight=true
+	grabPr.MaxActivationDistance=10
+	grabPr.Style=Enum.ProximityPromptStyle.Custom
+	grabPr:SetAttribute("State","Grab")
+	grabPr.Parent=ppBase
+	local sellPr=trove:Add(Instance.new("ProximityPrompt"))
+	sellPr.ActionText="Sell: "..fmt(sellVal)
+	sellPr.ObjectText=""
+	sellPr.HoldDuration=1.5
+	sellPr.KeyboardKeyCode=Enum.KeyCode.F
+	sellPr.RequiresLineOfSight=true
+	sellPr.MaxActivationDistance=10
+	sellPr.Style=Enum.ProximityPromptStyle.Custom
+	sellPr.UIOffset=Vector2.new(0,-72)
+	sellPr:SetAttribute("State","Sell")
+	sellPr.Parent=ppBase
+	local slotInfo={
+		podNum=slot,sp=sp,clone=cl,gui=fullGui,
+		grabPr=grabPr,sellPr=sellPr,data=data,index=idx,
+		mutation=mut,traits=traits,trove=trove,grabbed=false,
+		spawnedAt=spawnedAt or os.clock(),
+	}
+	AllSlots[slot]=slotInfo
+	_G.SpawnedAnimals[slot]={Index=idx,Mutation=mut,Traits=traits,spawnPart=sp}
+	invalCache()
+	grabPr.Triggered:Connect(function()
+		if slotInfo.grabbed then
+			if Grab.sourceSlot==slotInfo then cancelGrab(true) end
+			return
+		end
+		if slotInfo.grabbed then task.defer(cancelGrab,false); return end
+		if Grab.active then cancelGrab(false) end
+		slotInfo.grabbed=true
+		grabPr.ActionText="Drop"
+		grabPr:SetAttribute("State","Drop")
+		sellPr.Enabled=false
+		setTransp(cl,0.5)
+		local gps=0
+		if A_sh and NumU then
+			local o,g=pcall(function() return A_sh:GetGeneration(idx,mut,traits) end)
+			if o then gps=g or 0 end
+		end
+		setOHGrab(fullGui,mut,gps)
+		LP:SetAttribute("Stealing",true)
+		setSpd(SPD_G)
+		local ht=Trove.new()
+		Grab.handTrove=ht
+		Grab.active=true
+		Grab.index=idx
+		Grab.mutation=mut
+		Grab.traits=traits
+		Grab.sourceSlot=slotInfo
+		spawnHand(ht,idx,mut,traits)
+		playHold(ht)
+		showPPs(plot,slotInfo)
+	end)
+	sellPr.Triggered:Connect(function()
+		if Grab.active and Grab.sourceSlot==slotInfo then cancelGrab(false) end
+		local pNum=slotInfo.podNum
+		AllSlots[pNum]=nil
+		if _G.SpawnedAnimals then _G.SpawnedAnimals[pNum]=nil end
+		invalCache()
+		saveData()
+		trove:Destroy()
+	end)
+	trove:Add(function()
+		AllSlots[slotInfo.podNum]=nil
+		_G.SpawnedAnimals[slotInfo.podNum]=nil
+		if Grab.sourceSlot==slotInfo then cancelGrab(false) end
+		removePad(slotInfo.podNum)
+	end)
+	local realScale=cl:GetScale()
+	cl:ScaleTo(0.001)
+	cl:PivotTo(podCF)
+	local nv=trove:Add(Instance.new("NumberValue"))
+	nv.Value=0.001
+	trove:Add(nv.Changed:Connect(function(v) cl:ScaleTo(v); cl:PivotTo(podCF) end))
+	local tw=TW:Create(nv,TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Value=realScale})
+	tw:Play()
+	tw.Completed:Wait()
+	nv.Value=realScale
+	if SpawnStatus then SpawnStatus.Text="OK: "..idx.." (slot "..slot..")"; SpawnStatus.TextColor3=Color3.fromRGB(57,204,24) end
+	monGUI(idx)
+	saveData()
+	task.spawn(function()
+		task.wait(0.3)
+		local cm=getClaimMain(plot,slot)
+		if cm then buildCashPad(cm,idx,mut,traits,slot,spawnedAt) end
+	end)
+end
+
+local function delAll()
+	for s,inf in pairs(AllSlots) do
+		if inf.trove then pcall(function() inf.trove:Destroy() end) end
+	end
+	AllSlots={}
+	_G.SpawnedAnimals={}
+	invalCache()
+	saveData()
+	if SpawnStatus then SpawnStatus.Text="All spawned brainrots removed"; SpawnStatus.TextColor3=Color3.fromRGB(57,204,24) end
+	task.delay(2,function() if SpawnStatus then SpawnStatus.Text="" end end)
+end
+
+task.spawn(function()
+	task.wait(3)
+	local saved=loadSave()
+	if not saved then return end
+	local plot
+	local tries=0
+	repeat
+		plot=getPlot()
+		if not plot then task.wait(1) end
+		tries=tries+1
+	until plot or tries>20
+	if not plot then return end
+	for s,inf in pairs(saved) do
+		if inf.index and inf.index~="" then
+			if slotOcc(s) then continue end
+			local tr=inf.traits
+			if type(tr)=="string" and tr~="" then
+				local t={}
+				for p in tr:gmatch("[^,]+") do table.insert(t,p) end
+				tr=#t>0 and t or nil
+			elseif type(tr)~="table" then tr=nil end
+			if type(tr)=="table" and #tr==0 then tr=nil end
+			local mut=(inf.mutation and inf.mutation~="") and inf.mutation or nil
+			doSpawn(plot,inf.index,mut,tr,inf.spawnedAt)
+			task.wait(0.15)
+		end
+	end
+end)
+
+local DupeGui=nil
+local DupeDrop=nil
+local DupeBtn=nil
+local DupeStatus=nil
+
+local function updDupeDrop()
+	if not DupeDrop then return end
+	local all={}
+	for s,inf in pairs(AllSlots) do
+		local dn=(A_d and A_d[inf.index] and A_d[inf.index].DisplayName) or inf.index
+		table.insert(all,{slot=s,name=dn,index=inf.index,mutation=inf.mutation,traits=inf.traits})
+	end
+	local sv=getBrainrots()
+	for s,an in pairs(sv) do
+		if not AllSlots[s] then
+			local dn=(A_d and A_d[an.Index] and A_d[an.Index].DisplayName) or an.Index
+			table.insert(all,{slot=s,name=dn,index=an.Index,mutation=an.Mutation,traits=an.Traits,isServer=true})
+		end
+	end
+	table.sort(all,function(a,b) return a.slot<b.slot end)
+	DupeDrop:SetAttribute("AnimalList",all)
+end
+
+local function createDupeGUI()
+	if DupeGui then DupeGui:Destroy() end
+	DupeGui=ni("ScreenGui",{Name="DupeGui",ResetOnSpawn=false,ZIndexBehavior=Enum.ZIndexBehavior.Global,DisplayOrder=100,IgnoreGuiInset=true},PG)
+	local main=ni("Frame",{Name="Main",AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.new(0,340,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=Color3.fromRGB(12,15,22),BorderSizePixel=0,Active=true,Draggable=true,ClipsDescendants=false},DupeGui)
+	ac(main,10)
+	ni("UIStroke",{Color=Color3.fromRGB(50,70,110),Thickness=1.5},main)
+	local head=ni("Frame",{Name="Header",Size=UDim2.new(1,0,0,46),BackgroundColor3=Color3.fromRGB(20,28,44),BorderSizePixel=0},main)
+	ac(head,10)
+	ni("Frame",{Size=UDim2.new(1,0,0.5,0),Position=UDim2.new(0,0,0.5,0),BackgroundColor3=Color3.fromRGB(20,28,44),BorderSizePixel=0},head)
+	local titleBar=ni("Frame",{AnchorPoint=Vector2.new(0,0.5),Position=UDim2.new(0,14,0.5,0),Size=UDim2.new(0.75,0,0.8,0),BackgroundTransparency=1},head)
+	ni("UIListLayout",{FillDirection=Enum.FillDirection.Vertical,VerticalAlignment=Enum.VerticalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,1)},titleBar)
+	local t1=ni("TextLabel",{LayoutOrder=1,BackgroundTransparency=1,FontFace=FNT,Text="Duplicator",TextColor3=Color3.new(1,1,1),TextScaled=true,Size=UDim2.new(0.5,0,0.55,0),TextXAlignment=Enum.TextXAlignment.Left},titleBar)
+	ast(t1,1,Color3.new(0,0,0))
+	local t2=ni("TextLabel",{LayoutOrder=2,BackgroundTransparency=1,FontFace=FNT,Text="Clone any brainrot",TextColor3=Color3.fromRGB(100,120,160),TextScaled=true,Size=UDim2.new(1,0,0.38,0),TextXAlignment=Enum.TextXAlignment.Left},titleBar)
+	ast(t2,1,Color3.new(0,0,0))
+	local closeBtn2=ni("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-12,0.5,0),Size=UDim2.new(0,28,0,28),BackgroundColor3=Color3.fromRGB(180,45,45),BorderSizePixel=0,FontFace=FNT,Text="X",TextColor3=Color3.new(1,1,1),TextScaled=true,AutoButtonColor=false},head)
+	ac(closeBtn2,6)
+	closeBtn2.MouseButton1Click:Connect(function() DupeGui.Enabled=false end)
+	local body=ni("Frame",{Name="Body",Position=UDim2.new(0,0,0,46),Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,ClipsDescendants=false},main)
+	ni("UIPadding",{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,12),PaddingTop=UDim.new(0,12),PaddingBottom=UDim.new(0,14)},body)
+	ni("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,8)},body)
+	local dropLbl=ni("TextLabel",{LayoutOrder=1,Size=UDim2.new(1,0,0,14),BackgroundTransparency=1,Text="Select brainrot",TextColor3=Color3.fromRGB(140,160,200),TextScaled=true,FontFace=FNT,TextXAlignment=Enum.TextXAlignment.Left},body)
+	ast(dropLbl,1,Color3.new(0,0,0))
+	local dropWrap=ni("Frame",{LayoutOrder=2,Size=UDim2.new(1,0,0,40),BackgroundTransparency=1,ClipsDescendants=false},body)
+	local dropFrame=ni("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(22,28,42),BorderSizePixel=0,ClipsDescendants=false},dropWrap)
+	ac(dropFrame,8)
+	ni("UIStroke",{Color=Color3.fromRGB(45,60,95),Thickness=1.2},dropFrame)
+	DupeDrop=ni("TextButton",{Size=UDim2.new(1,-40,1,0),BackgroundTransparency=1,Text="Select...",TextColor3=Color3.fromRGB(160,180,220),FontFace=FNT,TextScaled=true,TextXAlignment=Enum.TextXAlignment.Left,AutoButtonColor=false},dropFrame)
+	ni("UIPadding",{PaddingLeft=UDim.new(0,10)},DupeDrop)
+	local arrow=ni("TextLabel",{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-10,0.5,0),Size=UDim2.new(0,20,0,20),BackgroundTransparency=1,Text="v",FontFace=FNT,TextColor3=Color3.fromRGB(100,130,180),TextScaled=true},dropFrame)
+	local dropList=nil
+	local listOpen=false
+	local function closeList()
+		if dropList then dropList:Destroy(); dropList=nil end
+		listOpen=false
+		TW:Create(arrow,TweenInfo.new(0.15),{Rotation=0}):Play()
+	end
+	local function openList()
+		closeList()
+		listOpen=true
+		TW:Create(arrow,TweenInfo.new(0.15),{Rotation=180}):Play()
+		local all=DupeDrop:GetAttribute("AnimalList") or {}
+		if #all==0 then
+			all={}
+			for s,inf in pairs(AllSlots) do
+				local dn=(A_d and A_d[inf.index] and A_d[inf.index].DisplayName) or inf.index
+				table.insert(all,{slot=s,name=dn,index=inf.index,mutation=inf.mutation,traits=inf.traits})
+			end
+			local sv=getBrainrots()
+			for s,an in pairs(sv) do
+				if not AllSlots[s] then
+					local dn=(A_d and A_d[an.Index] and A_d[an.Index].DisplayName) or an.Index
+					table.insert(all,{slot=s,name=dn,index=an.Index,mutation=an.Mutation,traits=an.Traits,isServer=true})
+				end
+			end
+			table.sort(all,function(a,b) return a.slot<b.slot end)
+		end
+		local listH=math.min(#all*36+8,180)
+		dropList=ni("ScrollingFrame",{ZIndex=20,AnchorPoint=Vector2.new(0,0),Position=UDim2.new(0,0,1,4),Size=UDim2.new(1,0,0,listH),BackgroundColor3=Color3.fromRGB(16,20,32),BorderSizePixel=0,ScrollBarThickness=3,CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,ClipsDescendants=true},dropFrame)
+		ac(dropList,8)
+		ni("UIStroke",{Color=Color3.fromRGB(45,60,95),Thickness=1.2},dropList)
+		ni("UIPadding",{PaddingLeft=UDim.new(0,4),PaddingRight=UDim.new(0,4),PaddingTop=UDim.new(0,4),PaddingBottom=UDim.new(0,4)},dropList)
+		ni("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,3)},dropList)
+		if #all==0 then
+			ni("TextLabel",{Size=UDim2.new(1,0,0,32),BackgroundTransparency=1,Text="No brainrots found",TextColor3=Color3.fromRGB(180,80,80),TextScaled=true,FontFace=FNT},dropList)
+			return
+		end
+		for i,entry in ipairs(all) do
+			local tag=entry.isServer and " [S]" or ""
+			local mutTag=(entry.mutation and entry.mutation~="") and (" | "..entry.mutation) or ""
+			local btn=ni("TextButton",{LayoutOrder=i,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(24,30,46),BorderSizePixel=0,FontFace=FNT,Text=entry.name..tag..mutTag.."  #"..entry.slot,TextColor3=entry.isServer and Color3.fromRGB(180,200,255) or Color3.new(1,1,1),TextScaled=true,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=21,AutoButtonColor=false},dropList)
+			ac(btn,6)
+			ni("UIPadding",{PaddingLeft=UDim.new(0,8)},btn)
+			local e=entry
+			btn.MouseEnter:Connect(function() TW:Create(btn,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(38,50,80)}):Play() end)
+			btn.MouseLeave:Connect(function() TW:Create(btn,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(24,30,46)}):Play() end)
+			btn.MouseButton1Click:Connect(function()
+				DupeDrop.Text=e.name..(e.isServer and " [S]" or "").."  #"..e.slot
+				DupeDrop.TextColor3=Color3.new(1,1,1)
+				DupeDrop:SetAttribute("DupeIndex",e.index)
+				DupeDrop:SetAttribute("DupeMutation",e.mutation or "")
+				local ts=""
+				if e.traits then ts=table.concat(e.traits,",") end
+				DupeDrop:SetAttribute("DupeTraits",ts)
+				closeList()
+			end)
+		end
+	end
+	DupeDrop.MouseButton1Click:Connect(function() if listOpen then closeList() else openList() end end)
+	DupeStatus=ni("TextLabel",{LayoutOrder=4,Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,Text="",TextColor3=Color3.new(1,1,1),TextScaled=true,FontFace=FNT},body)
+	ast(DupeStatus,1,Color3.new(0,0,0))
+	DupeBtn=ni("TextButton",{LayoutOrder=3,Size=UDim2.new(1,0,0,40),BackgroundColor3=Color3.fromRGB(40,160,60),BorderSizePixel=0,FontFace=FNT,Text="DUPLICATE",TextColor3=Color3.new(1,1,1),TextScaled=true,AutoButtonColor=false},body)
+	ac(DupeBtn,8)
+	ni("UIStroke",{Color=Color3.fromRGB(60,200,80),Thickness=1.5},DupeBtn)
+	DupeBtn.MouseEnter:Connect(function() TW:Create(DupeBtn,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(55,190,75)}):Play() end)
+	DupeBtn.MouseLeave:Connect(function() TW:Create(DupeBtn,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(40,160,60)}):Play() end)
+	DupeBtn.MouseButton1Down:Connect(function() TW:Create(DupeBtn,TweenInfo.new(0.07),{BackgroundColor3=Color3.fromRGB(28,120,45)}):Play() end)
+	DupeBtn.MouseButton1Click:Connect(function()
+		local idx=DupeDrop:GetAttribute("DupeIndex")
+		if not idx or idx=="" then
+			DupeStatus.Text="Select a brainrot first"
+			DupeStatus.TextColor3=Color3.fromRGB(255,100,100)
+			return
+		end
+		local mut=DupeDrop:GetAttribute("DupeMutation") or ""
+		if mut=="" then mut=nil end
+		local ts=DupeDrop:GetAttribute("DupeTraits") or ""
+		local traits={}
+		for t in ts:gmatch("[^,]+") do if t~="" then table.insert(traits,t) end end
+		if #traits==0 then traits=nil end
+		DupeStatus.Text="Duplicating..."
+		DupeStatus.TextColor3=Color3.fromRGB(255,200,80)
+		task.spawn(function()
+			local plot
+			local tries=0
+			repeat
+				plot=getPlot()
+				if not plot then task.wait(1) end
+				tries=tries+1
+			until plot or tries>15
+			if not plot then
+				DupeStatus.Text="Plot not found"
+				DupeStatus.TextColor3=Color3.fromRGB(255,100,100)
+				return
+			end
+			local free=getFreeSlots(plot)
+			if #free==0 then
+				DupeStatus.Text="No free slots!"
+				DupeStatus.TextColor3=Color3.fromRGB(255,100,100)
+				return
+			end
+			doSpawn(plot,idx,mut,traits)
+			DupeStatus.Text="Done!"
+			DupeStatus.TextColor3=Color3.fromRGB(57,204,24)
+			task.wait(3)
+			DupeStatus.Text=""
+		end)
+	end)
+	task.spawn(function()
+		while DupeGui do
+			if DupeGui.Enabled then updDupeDrop() end
+			task.wait(2)
+		end
+	end)
+end
+
+if not _G.NoGui then
+	repeat task.wait() until A_d and M_d and T_d
+	local GUI_W=360
+	local GUI_H=420
+	local TAB_H=25
+	local MainGui=ni("ScreenGui",{Name="TskFakeTradeMain",ResetOnSpawn=false,ZIndexBehavior=Enum.ZIndexBehavior.Global,DisplayOrder=100,IgnoreGuiInset=true},PG)
+	local BASE_REF=768
+	local GuiScale=ni("UIScale",{},MainGui)
+	local function updScale()
+		local vp=CAM.ViewportSize
+		local minSide=math.min(vp.X,vp.Y)
+		GuiScale.Scale=math.clamp(minSide/BASE_REF,0.35,0.75)
+	end
+	updScale()
+	CAM:GetPropertyChangedSignal("ViewportSize"):Connect(updScale)
+	local Holder=ni("Frame",{Size=UDim2.new(0,GUI_W,0,GUI_H+TAB_H+50),Position=UDim2.new(0,8,0.5,-(GUI_H+TAB_H+50)/2),BackgroundTransparency=1,Active=true,Draggable=true},MainGui)
+	local Main=ni("Frame",{Size=UDim2.new(0,GUI_W,0,GUI_H+TAB_H+50),BackgroundColor3=Color3.fromRGB(12,10,20),BorderSizePixel=0,ClipsDescendants=true,Visible=true},Holder)
+	ac(Main,14)
+	local Header=ni("Frame",{Size=UDim2.new(1,0,0,46),BackgroundColor3=Color3.fromRGB(16,10,32),BorderSizePixel=0},Main)
+	ac(Header,14)
+	ni("Frame",{Size=UDim2.new(1,0,0.5,0),Position=UDim2.new(0,0,0.5,0),BackgroundColor3=Color3.fromRGB(16,10,32),BorderSizePixel=0},Header)
+	local HPill=ni("Frame",{Size=UDim2.new(0,3,0,22),Position=UDim2.new(0,12,0.5,-11),BackgroundColor3=Color3.fromRGB(130,60,240),BorderSizePixel=0},Header)
+	ac(HPill,4)
+	local HTitle=ni("TextLabel",{Size=UDim2.new(1,-120,1,0),Position=UDim2.new(0,22,0,0),BackgroundTransparency=1,Text="Tsk Fake Trade",TextColor3=Color3.fromRGB(210,185,255),TextSize=16,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},Header)
+	local HSub=ni("TextLabel",{Size=UDim2.new(1,-120,0,14),Position=UDim2.new(0,22,1,-16),BackgroundTransparency=1,Text="by ServerSadzz | discord.gg/tskcommunity",TextColor3=Color3.fromRGB(120,90,180),TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left},Header)
+	local HClose=ni("TextButton",{Size=UDim2.new(0,28,0,28),Position=UDim2.new(1,-36,0.5,-14),BackgroundColor3=Color3.fromRGB(28,10,50),BorderSizePixel=0,Text="X",TextColor3=Color3.fromRGB(160,110,240),TextSize=14,Font=Enum.Font.GothamBold},Header)
+	ac(HClose,7)
+	HClose.MouseButton1Click:Connect(function() Main.Visible=false; Holder.Active=false end)
+	HClose.MouseEnter:Connect(function() TW:Create(HClose,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(130,25,25)}):Play() end)
+	HClose.MouseLeave:Connect(function() TW:Create(HClose,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(28,10,50)}):Play() end)
+	local TabBar=ni("Frame",{Size=UDim2.new(1,-20,0,32),Position=UDim2.new(0,10,0,50),BackgroundTransparency=1},Main)
+	ni("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,4),VerticalAlignment=Enum.VerticalAlignment.Center},TabBar)
+	local Content=ni("ScrollingFrame",{Size=UDim2.new(1,-16,1,-92),Position=UDim2.new(0,8,0,88),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=Color3.fromRGB(100,40,200),CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,ElasticBehavior=Enum.ElasticBehavior.Never,ScrollingDirection=Enum.ScrollingDirection.Y},Main)
+	local ContentLayout=ni("UIListLayout",{Padding=UDim.new(0,8),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},Content)
+	ni("UIPadding",{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,12),PaddingLeft=UDim.new(0,2),PaddingRight=UDim.new(0,2)},Content)
+	local pages={}
+	local tabBtns={}
+	local function mkPage(id)
+		local f=ni("Frame",{Name=id,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,Visible=false},Content)
+		ni("UIListLayout",{Padding=UDim.new(0,8),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,SortOrder=Enum.SortOrder.LayoutOrder},f)
+		ni("UIPadding",{PaddingLeft=UDim.new(0,2),PaddingRight=UDim.new(0,2)},f)
+		pages[id]=f
+		return f
+	end
+	local TABS={"spawner","trade","dupe","misc"}
+	local TABL={"Spawner","Trade","Dupe","Misc"}
+	for i,id in ipairs(TABS) do
+		mkPage(id)
+		local btn=ni("TextButton",{Size=UDim2.new(0.25,-4,0,28),BackgroundColor3=id=="spawner" and Color3.fromRGB(80,25,170) or Color3.fromRGB(22,14,42),BorderSizePixel=0,Text=TABL[i],TextColor3=Color3.fromRGB(200,170,255),TextSize=11,Font=Enum.Font.GothamBold},TabBar)
+		ac(btn,8)
+		tabBtns[id]=btn
+	end
+	local function switch(id)
+		for tid,pg in pairs(pages) do pg.Visible=(tid==id) end
+		for tid,btn in pairs(tabBtns) do btn.BackgroundColor3=tid==id and Color3.fromRGB(80,25,170) or Color3.fromRGB(22,14,42) end
+	end
+	for _,id in ipairs(TABS) do
+		tabBtns[id].MouseButton1Click:Connect(function()
+			switch(id)
+			if id=="dupe" and not DupeGui then createDupeGUI() end
+		end)
+	end
+	switch("spawner")
+	local function mkSec(par,txt,ord)
+		local l=ni("TextLabel",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1,Text=txt:upper(),TextColor3=Color3.fromRGB(100,60,170),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=ord or 0},par)
+		return l
+	end
+	local function createAC(par,ph,getMatch,onSel,ord)
+		local cont=ni("Frame",{LayoutOrder=ord,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1},par)
+		local box=ni("TextBox",{Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(20,14,36),BorderSizePixel=0,Font=Enum.Font.Gotham,Text="",PlaceholderText=ph,PlaceholderColor3=Color3.fromRGB(70,50,100),TextColor3=Color3.fromRGB(200,175,255),TextSize=12,ClearTextOnFocus=false},cont)
+		ac(box,8)
+		local drop=ni("ScrollingFrame",{Size=UDim2.new(1,0,0,0),BackgroundColor3=Color3.fromRGB(16,20,32),BorderSizePixel=0,ScrollBarThickness=3,Visible=false,ClipsDescendants=true},cont)
+		ac(drop,8)
+		ni("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,2)},drop)
+		local function upd()
+			for _,ch in drop:GetChildren() do if ch:IsA("TextButton") then ch:Destroy() end end
+			local matches=getMatch(box.Text)
+			if #matches==0 then
+				drop.Visible=false
+				drop.Size=UDim2.new(1,0,0,0)
+				return
+			end
+			drop.Visible=true
+			local listH=math.min(#matches*30+4,150)
+			drop.Size=UDim2.new(1,0,0,listH)
+			for i,m in ipairs(matches) do
+				local btn=ni("TextButton",{LayoutOrder=i,Size=UDim2.new(1,0,0,28),BackgroundColor3=Color3.fromRGB(24,30,46),BorderSizePixel=0,Font=Enum.Font.Gotham,Text=m,TextColor3=Color3.fromRGB(200,175,255),TextSize=11,AutoButtonColor=false},drop)
+				ac(btn,4)
+				btn.MouseButton1Click:Connect(function()
+					box.Text=m
+					if onSel then onSel(m) end
+					drop.Visible=false
+					drop.Size=UDim2.new(1,0,0,0)
+				end)
+			end
+		end
+		box:GetPropertyChangedSignal("Text"):Connect(function()
+			if box.Text~="" then task.spawn(upd) else drop.Visible=false; drop.Size=UDim2.new(1,0,0,0) end
+		end)
+		box.FocusLost:Connect(function()
+			task.wait(0.2)
+			drop.Visible=false
+			drop.Size=UDim2.new(1,0,0,0)
+		end)
+		return box,drop,upd
+	end
+	local pg_spawn=pages["spawner"]
+	mkSec(pg_spawn,"Animal",1)
+	local animalBox,animalDrop
+	if A_d then
+		local function getAni(q)
+			local ql=q:lower()
+			local matches={}
+			for idx,data in pairs(A_d) do
+				local disp=data.DisplayName or idx
+				if disp:lower():find(ql,1,true) or idx:lower():find(ql,1,true) then
+					table.insert(matches,disp)
+				end
+			end
+			table.sort(matches)
+			return matches
+		end
+		animalBox,animalDrop=createAC(pg_spawn,"Animal name or index",getAni,nil,2)
+	end
+	mkSec(pg_spawn,"Mutation",3)
+	local mutBox,mutDrop
+	if M_d then
+		local function getMut(q)
+			local ql=q:lower()
+			local matches={}
+			for name,_ in pairs(M_d) do
+				if name:lower():find(ql,1,true) then table.insert(matches,name) end
+			end
+			table.sort(matches)
+			return matches
+		end
+		mutBox,mutDrop=createAC(pg_spawn,"Optional mutation",getMut,nil,4)
+	end
+	mkSec(pg_spawn,"Traits (comma separated)",5)
+	local traitBox,traitDrop
+	if T_d then
+		local function getTrait(q)
+			local full=traitBox.Text
+			local last=full:match("[^,]+$") or ""
+			local ql=last:lower()
+			local matches={}
+			for name,_ in pairs(T_d) do
+				if name:lower():find(ql,1,true) then table.insert(matches,name) end
+			end
+			table.sort(matches)
+			return matches
+		end
+		traitBox,traitDrop=createAC(pg_spawn,"Fire, Halo, ...",getTrait,function(sel)
+			local cur=traitBox.Text
+			local last=cur:match("[^,]+$") or ""
+			local base=cur:sub(1,#cur-#last)
+			if base=="" then base="" end
+			traitBox.Text=base..sel..", "
+		end,6)
+	end
+	local spawnBtn=ni("TextButton",{LayoutOrder=7,Size=UDim2.new(1,0,0,36),BackgroundColor3=Color3.fromRGB(57,204,24),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="SPAWN BRAINROT",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_spawn)
+	ac(spawnBtn,8)
+	SpawnStatus=ni("TextLabel",{LayoutOrder=8,Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,Text="",TextColor3=Color3.new(1,1,1),TextSize=10,Font=Enum.Font.Gotham},pg_spawn)
+	local delSaveBtn=ni("TextButton",{LayoutOrder=9,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(140,35,35),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Delete Save Data",TextColor3=Color3.new(1,1,1),TextSize=11,AutoButtonColor=false},pg_spawn)
+	ac(delSaveBtn,8)
+	delSaveBtn.MouseButton1Click:Connect(function()
+		delSave()
+		delSaveBtn.Text="Deleted!"
+		task.delay(2,function() if delSaveBtn and delSaveBtn.Parent then delSaveBtn.Text="Delete Save Data" end end)
+	end)
+	local delAllBtn=ni("TextButton",{LayoutOrder=10,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(180,45,45),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Delete All Spawned",TextColor3=Color3.new(1,1,1),TextSize=11,AutoButtonColor=false},pg_spawn)
+	ac(delAllBtn,8)
+	delAllBtn.MouseButton1Click:Connect(function()
+		delAll()
+		delAllBtn.Text="Removed!"
+		task.delay(2,function() if delAllBtn and delAllBtn.Parent then delAllBtn.Text="Delete All Spawned" end end)
+	end)
+	local pg_trade=pages["trade"]
+	mkSec(pg_trade,"Trade Control",1)
+	local TStat=ni("TextLabel",{LayoutOrder=2,Size=UDim2.new(1,0,0,30),BackgroundColor3=Color3.fromRGB(20,24,32),BackgroundTransparency=0.3,BorderSizePixel=0,Font=Enum.Font.Gotham,Text="Trade: Closed",TextColor3=Color3.fromRGB(201,201,201),TextSize=12},pg_trade)
+	ac(TStat,8)
+	mkSec(pg_trade,"Other Player (ID or name)",3)
+	local TUID=ni("TextBox",{LayoutOrder=4,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(20,14,36),BorderSizePixel=0,Font=Enum.Font.Gotham,Text="",PlaceholderText="ex: 123456789 or name",PlaceholderColor3=Color3.fromRGB(70,50,100),TextColor3=Color3.fromRGB(200,175,255),TextSize=12,ClearTextOnFocus=false},pg_trade)
+	ac(TUID,8)
+	local startBtn=ni("TextButton",{LayoutOrder=5,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(57,204,24),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Start Trade",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_trade)
+	ac(startBtn,8)
+	startBtn.MouseButton1Click:Connect(function()
+		local inp=TUID.Text:match("^%s*(.-)%s*$")
+		local tid=nil
+		if tonumber(inp) then tid=tonumber(inp)
+		else
+			local o,id=pcall(function() return P:GetUserIdFromNameAsync(inp) end)
+			if o and id then tid=id end
+		end
+		if tid then TradeUI.StartTrade(tid) end
+	end)
+	local readyTrade=ni("TextButton",{LayoutOrder=6,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(81,158,86),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Ready / Accept",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_trade)
+	ac(readyTrade,8)
+	readyTrade.MouseButton1Click:Connect(function() TradeUI.MyReady() end)
+	local otherReadyBtn=ni("TextButton",{LayoutOrder=7,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Other Ready",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_trade)
+	ac(otherReadyBtn,8)
+	otherReadyBtn.MouseButton1Click:Connect(function() TradeUI.OtherPlayerContinue() end)
+	local signInput=ni("TextBox",{LayoutOrder=8,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(20,14,36),BorderSizePixel=0,Font=Enum.Font.Gotham,Text="",PlaceholderText="Other's sign text",PlaceholderColor3=Color3.fromRGB(70,50,100),TextColor3=Color3.fromRGB(200,175,255),TextSize=12,ClearTextOnFocus=false},pg_trade)
+	ac(signInput,8)
+	signInput.FocusLost:Connect(function(ent)
+		if ent and signInput.Text~="" then TradeUI.AddOtherPlayerSignMsg(signInput.Text) end
+	end)
+	local cancelTrade=ni("TextButton",{LayoutOrder=9,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(233,66,66),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Cancel Trade",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_trade)
+	ac(cancelTrade,8)
+	cancelTrade.MouseButton1Click:Connect(function() TradeUI.MyPlayerCancel() end)
+	local otherCancel=ni("TextButton",{LayoutOrder=10,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(170,50,50),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Other Canceled",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_trade)
+	ac(otherCancel,8)
+	otherCancel.MouseButton1Click:Connect(function() TradeUI.OtherPlayerCancel() end)
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			if MainGui.Enabled and pages["trade"].Visible then
+				if not tradeOpen then
+					TStat.Text="Trade: Closed"
+					TStat.TextColor3=Color3.fromRGB(201,201,201)
+				elseif proc then
+					TStat.Text="Trade: Processing..."
+					TStat.TextColor3=Color3.fromRGB(115,255,0)
+				elseif accPhase then
+					local eu=myAcc and "[YES]" or "[ ]"
+					local ou=otherAcc and "[YES]" or "[ ]"
+					TStat.Text="Accept â€” You:"..eu.."  Other:"..ou
+					TStat.TextColor3=Color3.fromRGB(255,200,80)
+				elseif tradeOpen then
+					local eu=myReady and "[YES]" or "[ ]"
+					local ou=otherReady and "[YES]" or "[ ]"
+					local sc=0 for _ in pairs(selSlots) do sc=sc+1 end
+					TStat.Text="Selected ("..sc..")  You:"..eu.."  Other:"..ou
+					TStat.TextColor3=Color3.fromRGB(115,200,255)
+				end
+			end
+		end
+	end)
+	local pg_dupe=pages["dupe"]
+	mkSec(pg_dupe,"Duplicator",1)
+	local dupeOpen=ni("TextButton",{LayoutOrder=2,Size=UDim2.new(1,0,0,36),BackgroundColor3=Color3.fromRGB(85,112,127),BorderSizePixel=0,Font=Enum.Font.GothamBold,Text="Open Dupe GUI",TextColor3=Color3.new(1,1,1),TextSize=12,AutoButtonColor=false},pg_dupe)
+	ac(dupeOpen,8)
+	dupeOpen.MouseButton1Click:Connect(function()
+		if not DupeGui then createDupeGUI() end
+		DupeGui.Enabled=true
+	end)
+	local pg_misc=pages["misc"]
+	mkSec(pg_misc,"Slot Settings",1)
+	local slotRow=ni("Frame",{LayoutOrder=2,Size=UDim2.new(1,0,0,40),BackgroundTransparency=1},pg_misc)
+	ni("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,10),VerticalAlignment=Enum.VerticalAlignment.Center},slotRow)
+	ni("TextLabel",{Size=UDim2.new(0,100,1,0),Text="My Slots:",TextColor3=Color3.fromRGB(190,170,255),TextSize=11,Font=Enum.Font.GothamBold},slotRow)
+	local mySlotBox=ni("TextBox",{Size=UDim2.new(0,50,1,-8),BackgroundColor3=Color3.fromRGB(20,14,36),Text=tostring(customMySlots or 27),TextColor3=Color3.fromRGB(200,175,255),TextSize=12,ClearTextOnFocus=false},slotRow)
+	ac(mySlotBox,8)
+	ni("TextLabel",{Size=UDim2.new(0,100,1,0),Text="Other Slots:",TextColor3=Color3.fromRGB(190,170,255),TextSize=11,Font=Enum.Font.GothamBold},slotRow)
+	local otherSlotBox=ni("TextBox",{Size=UDim2.new(0,50,1,-8),BackgroundColor3=Color3.fromRGB(20,14,36),Text=tostring(customOtherSlots or 23),TextColor3=Color3.fromRGB(200,175,255),TextSize=12,ClearTextOnFocus=false},slotRow)
+	ac(otherSlotBox,8)
+	local resetSlotsBtn=ni("TextButton",{LayoutOrder=3,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(100,20,20),Text="Reset to Default",TextColor3=Color3.new(1,1,1),TextSize=11,AutoButtonColor=false},pg_misc)
+	ac(resetSlotsBtn,8)
+	local function updSlots()
+		local my=tonumber(mySlotBox.Text)
+		local ot=tonumber(otherSlotBox.Text)
+		if my and my>0 then customMySlots=my else customMySlots=27 end
+		if ot and ot>0 then customOtherSlots=ot else customOtherSlots=23 end
+		if baseSlots1 then updSlotTexts() end
+	end
+	mySlotBox.FocusLost:Connect(updSlots)
+	otherSlotBox.FocusLost:Connect(updSlots)
+	resetSlotsBtn.MouseButton1Click:Connect(function()
+		customMySlots=27
+		customOtherSlots=23
+		mySlotBox.Text="27"
+		otherSlotBox.Text="23"
+		updSlotTexts()
+	end)
+	mkSec(pg_misc,"Keybinds",4)
+	local keyRows={{label="Other Accept",key=Enum.KeyCode.R},{label="Other Decline",key=Enum.KeyCode.T},{label="Hide All GUI",key=Enum.KeyCode.P}}
+	local function makeKeyRow(par,labelTxt,defKey,ord)
+		local row=ni("Frame",{LayoutOrder=ord,Size=UDim2.new(1,0,0,32),BackgroundTransparency=1},par)
+		ni("UIListLayout",{FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,6),VerticalAlignment=Enum.VerticalAlignment.Center},row)
+		ni("TextLabel",{Size=UDim2.new(0,120,1,-4),BackgroundTransparency=1,Text=labelTxt,TextColor3=Color3.fromRGB(190,170,255),TextSize=11,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},row)
+		local btn=ni("TextButton",{Size=UDim2.new(1,-130,1,-4),BackgroundColor3=Color3.fromRGB(22,14,42),BorderSizePixel=0,Text=defKey.Name,TextColor3=Color3.fromRGB(160,130,240),TextSize=10,Font=Enum.Font.GothamBold,AutoButtonColor=false},row)
+		ac(btn,8)
+		return btn
+	end
+	local keyBtns={}
+	for i,inf in ipairs(keyRows) do
+		keyBtns[inf.label]=makeKeyRow(pg_misc,inf.label,inf.key,4+i)
+	end
+	local resetKb=ni("TextButton",{LayoutOrder=8,Size=UDim2.new(1,0,0,32),BackgroundColor3=Color3.fromRGB(100,20,20),Text="Reset Keybinds to Default",TextColor3=Color3.new(1,1,1),TextSize=11,AutoButtonColor=false},pg_misc)
+	ac(resetKb,8)
+	local currKeys={OtherAccept=Enum.KeyCode.R,OtherDecline=Enum.KeyCode.T,HideAllGuis=Enum.KeyCode.P}
+	local waitKB=nil
+	for lbl,btn in pairs(keyBtns) do
+		btn.MouseButton1Click:Connect(function()
+			waitKB={label=lbl,btn=btn}
+			btn.Text="..."
+			btn.BackgroundColor3=Color3.fromRGB(60,20,120)
+		end)
+	end
+	resetKb.MouseButton1Click:Connect(function()
+		currKeys={OtherAccept=Enum.KeyCode.R,OtherDecline=Enum.KeyCode.T,HideAllGuis=Enum.KeyCode.P}
+		for lbl,btn in pairs(keyBtns) do
+			local k=currKeys[lbl]
+			btn.Text=k.Name
+			btn.BackgroundColor3=Color3.fromRGB(22,14,42)
+		end
+	end)
+	UI.InputBegan:Connect(function(inp,gp)
+		if gp then return end
+		if waitKB and inp.KeyCode~=Enum.KeyCode.Unknown then
+			local key=inp.KeyCode
+			local lbl=waitKB.label
+			local btn=waitKB.btn
+			currKeys[lbl]=key
+			btn.Text=key.Name
+			btn.BackgroundColor3=Color3.fromRGB(22,14,42)
+			waitKB=nil
+			return
+		end
+		if inp.UserInputType~=Enum.UserInputType.Keyboard then return end
+		local k=inp.KeyCode
+		if k==currKeys.OtherAccept then TradeUI.OtherPlayerContinue()
+		elseif k==currKeys.OtherDecline then TradeUI.OtherPlayerCancel()
+		elseif k==currKeys.HideAllGuis then Main.Visible=not Main.Visible; Holder.Active=Main.Visible end
+	end)
+	local function parseTraits(s)
+		local t={}
+		for p in s:gmatch("[^,]+") do
+			local r=p:match("^%s*(.-)%s*$")
+			if r~="" then table.insert(t,r) end
+		end
+		return t
+	end
+	spawnBtn.MouseButton1Click:Connect(function()
+		local anName=animalBox and animalBox.Text:match("^%s*(.-)%s*$") or ""
+		if anName=="" then
+			SpawnStatus.Text="Enter an animal name"
+			SpawnStatus.TextColor3=Color3.fromRGB(255,200,80)
+			return
+		end
+		local idx=anName
+		if A_d then
+			for id,data in pairs(A_d) do
+				if (data.DisplayName or ""):lower()==anName:lower() or id:lower()==anName:lower() then
+					idx=id
+					break
+				end
+			end
+		end
+		local mut=mutBox and mutBox.Text:match("^%s*(.-)%s*$") or ""
+		mut=mut~="" and mut or nil
+		local traitsRaw=traitBox and traitBox.Text:match("^%s*(.-)%s*$") or ""
+		local traits=traitsRaw~="" and parseTraits(traitsRaw) or nil
+		SpawnStatus.Text="Spawning..."
+		SpawnStatus.TextColor3=Color3.fromRGB(255,200,80)
+		task.spawn(function()
+			local plot
+			local tries=0
+			repeat
+				plot=getPlot()
+				if not plot then task.wait(1) end
+				tries=tries+1
+			until plot or tries>15
+			if not plot then
+				SpawnStatus.Text="Plot not found"
+				SpawnStatus.TextColor3=Color3.fromRGB(255,100,100)
+				return
+			end
+			doSpawn(plot,idx,mut,traits)
+		end)
+	end)
+end
+
+task.spawn(function()
+	local c=LP.Character or LP.CharacterAdded:Wait()
+	local h=c:WaitForChild("Humanoid",5)
+	if h then h.WalkSpeed=SPD_N end
+end)

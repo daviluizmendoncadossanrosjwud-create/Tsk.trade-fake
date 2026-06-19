@@ -1,0 +1,1023 @@
+-- ============================================================
+-- PUDIMSTEAL HUB v3.0 | by Anoleg
+-- Key: pudimscripts2026582//38183hainmu
+-- Duração da key: 10 horas | Auto-Execute | Server Hop
+-- ============================================================
+
+local Players         = game:GetService("Players")
+local RunService      = game:GetService("RunService")
+local UserInputService= game:GetService("UserInputService")
+local TweenService    = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService     = game:GetService("HttpService")
+
+local LP    = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+
+-- ============================================================
+-- SISTEMA DE KEY PERSISTENTE (10 horas)
+-- Salva no executor: writefile / readfile
+-- ============================================================
+local CORRECT_KEY    = "pudimscripts2026582//38183hainmu"
+local KEY_LINK       = "https://link-center.net/4751120/DIDXc9Ec3vVi"
+local KEY_SAVE_FILE  = "pudim_key_session.json"
+local KEY_DURATION   = 10 * 3600  -- 10 horas em segundos
+local SCRIPT_URL     = "https://raw.githubusercontent.com/daviluizmendoncadossanrosjwud-create/script.lua.../refs/heads/main/Steal.pudimscripts555madesab"
+local PLACE_ID       = game.PlaceId
+
+-- Dados da sessão na memória global (persiste entre server hops)
+if not getgenv().PudimSession then
+    getgenv().PudimSession = {
+        valid     = false,
+        startTime = 0,
+        userId    = 0,
+    }
+end
+
+-- Tenta carregar sessão salva do arquivo
+local function loadSession()
+    pcall(function()
+        if isfile and isfile(KEY_SAVE_FILE) then
+            local raw  = readfile(KEY_SAVE_FILE)
+            local data = HttpService:JSONDecode(raw)
+            if data and data.startTime and data.userId then
+                local elapsed = os.time() - data.startTime
+                -- Verifica se a key ainda está válida E é do mesmo usuário
+                if elapsed < KEY_DURATION and data.userId == LP.UserId then
+                    getgenv().PudimSession.valid     = true
+                    getgenv().PudimSession.startTime = data.startTime
+                    getgenv().PudimSession.userId    = data.userId
+                end
+            end
+        end
+    end)
+end
+
+-- Salva sessão no arquivo
+local function saveSession()
+    pcall(function()
+        if writefile then
+            local data = HttpService:JSONEncode({
+                startTime = getgenv().PudimSession.startTime,
+                userId    = LP.UserId,
+            })
+            writefile(KEY_SAVE_FILE, data)
+        end
+    end)
+end
+
+-- Retorna tempo restante formatado
+local function getTimeLeft()
+    if not getgenv().PudimSession.valid then return "00:00:00" end
+    local elapsed = os.time() - getgenv().PudimSession.startTime
+    local left    = KEY_DURATION - elapsed
+    if left <= 0 then
+        getgenv().PudimSession.valid = false
+        return "EXPIRADA"
+    end
+    local h = math.floor(left / 3600)
+    local m = math.floor((left % 3600) / 60)
+    local s = math.floor(left % 60)
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+-- Carrega sessão ao iniciar
+loadSession()
+
+-- ============================================================
+-- SERVER HOP COM AUTO-EXECUTE
+-- ============================================================
+local function serverHop()
+    showNotif("🔀 Procurando servidor novo...", Color3.fromRGB(255, 200, 50))
+    task.spawn(function()
+        pcall(function()
+            local url = ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(PLACE_ID)
+            local ok, res = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet(url))
+            end)
+            if ok and res and res.data then
+                local myJobId = game.JobId
+                for _, server in ipairs(res.data) do
+                    if server.id ~= myJobId and server.playing < server.maxPlayers then
+                        showNotif("✅ Entrando em servidor novo!", Color3.fromRGB(100, 255, 100))
+                        task.wait(0.8)
+                        TeleportService:TeleportToPlaceInstance(PLACE_ID, server.id, LP)
+                        return
+                    end
+                end
+            end
+            -- Fallback: teleport simples
+            showNotif("🔄 Reconectando ao mesmo jogo...", Color3.fromRGB(255, 160, 50))
+            task.wait(0.5)
+            TeleportService:Teleport(PLACE_ID, LP)
+        end)
+    end)
+end
+
+-- Auto-execute ao entrar num servidor novo via TeleportService
+-- Salva flag antes do hop e ao carregar verifica
+if getgenv().PudimAutoExec then
+    getgenv().PudimAutoExec = nil
+    -- Já tem sessão válida salva, só abre o hub
+    if getgenv().PudimSession.valid then
+        task.wait(2)
+        -- openMainHub será chamado após definições abaixo
+        getgenv().PudimShouldAutoOpen = true
+    end
+end
+
+-- ============================================================
+-- FLAGS DE ESTADO
+-- ============================================================
+local F = {
+    NoClip       = false,
+    ESP          = false,
+    XRay         = false,
+    AutoSteal    = false,
+    AutoKick     = false,
+    AutoProximity= false,
+    AntiRagdoll  = false,
+    InfJump      = false,
+    Invisible    = false,
+    SavedCFrame  = nil,
+}
+
+local espObjects    = {}
+local xrayParts     = {}
+local managedPrompts= {}
+
+-- ============================================================
+-- FUNÇÕES UTILITÁRIAS
+-- ============================================================
+local function getRainbowColor(offset)
+    offset = offset or 0
+    local t = tick() + offset
+    local r = math.sin(t * 1.5) * 0.5 + 0.5
+    local g = math.sin(t * 1.5 + 2.094) * 0.5 + 0.5
+    local b = math.sin(t * 1.5 + 4.189) * 0.5 + 0.5
+    return Color3.new(r, g, b)
+end
+
+local function applyRGBStroke(instance, thickness)
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = thickness or 3
+    stroke.Color = Color3.new(1, 0, 0)
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = instance
+    RunService.RenderStepped:Connect(function()
+        if stroke and stroke.Parent then
+            stroke.Color = getRainbowColor()
+        end
+    end)
+    return stroke
+end
+
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragInput, mousePos, framePos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            mousePos  = input.Position
+            framePos  = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - mousePos
+            frame.Position = UDim2.new(
+                framePos.X.Scale, framePos.X.Offset + delta.X,
+                framePos.Y.Scale, framePos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+function showNotif(text, color)
+    color = color or Color3.fromRGB(100, 255, 100)
+    local SG  = Instance.new("ScreenGui")
+    SG.Name   = "PudimNotif"
+    SG.ResetOnSpawn = false
+    SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    SG.Parent = LP.PlayerGui
+    local lbl = Instance.new("TextLabel")
+    lbl.Size  = UDim2.new(0, 340, 0, 44)
+    lbl.Position = UDim2.new(0.5, -170, 0.85, 0)
+    lbl.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    lbl.TextColor3 = color
+    lbl.Font   = Enum.Font.GothamBold
+    lbl.TextSize = 14
+    lbl.Text   = text
+    lbl.BackgroundTransparency = 0.2
+    lbl.BorderSizePixel = 0
+    lbl.Parent = SG
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = lbl
+    applyRGBStroke(lbl, 2)
+    task.delay(2.5, function()
+        TweenService:Create(lbl, TweenInfo.new(0.5), {
+            TextTransparency = 1,
+            BackgroundTransparency = 1
+        }):Play()
+        task.wait(0.6)
+        SG:Destroy()
+    end)
+end
+
+-- ============================================================
+-- KEY SYSTEM GUI (só aparece se a sessão não for válida)
+-- ============================================================
+local function openKeyGui()
+    local KeyGui = Instance.new("ScreenGui")
+    KeyGui.Name  = "PudimKeySystem"
+    KeyGui.ResetOnSpawn = false
+    KeyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    KeyGui.Parent = LP.PlayerGui
+
+    local KeyFrame = Instance.new("Frame")
+    KeyFrame.Name  = "KeyFrame"
+    KeyFrame.Size  = UDim2.new(0, 420, 0, 280)
+    KeyFrame.Position = UDim2.new(0.5, -210, 0.5, -140)
+    KeyFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    KeyFrame.BorderSizePixel = 0
+    KeyFrame.Active = true
+    KeyFrame.Parent = KeyGui
+    Instance.new("UICorner", KeyFrame).CornerRadius = UDim.new(0, 18)
+    applyRGBStroke(KeyFrame, 3)
+    makeDraggable(KeyFrame)
+
+    -- Título
+    local keyTitle = Instance.new("TextLabel")
+    keyTitle.Size  = UDim2.new(1, 0, 0, 50)
+    keyTitle.Position = UDim2.new(0, 0, 0, 0)
+    keyTitle.BackgroundTransparency = 1
+    keyTitle.Font  = Enum.Font.GothamBold
+    keyTitle.TextSize = 22
+    keyTitle.Text  = "🔑 PudimSteal Hub v3.0"
+    keyTitle.Parent = KeyFrame
+    RunService.RenderStepped:Connect(function()
+        if keyTitle and keyTitle.Parent then
+            keyTitle.TextColor3 = getRainbowColor()
+        end
+    end)
+
+    -- Sub
+    local keySub = Instance.new("TextLabel")
+    keySub.Size  = UDim2.new(1, -40, 0, 24)
+    keySub.Position = UDim2.new(0, 20, 0, 50)
+    keySub.BackgroundTransparency = 1
+    keySub.TextColor3 = Color3.fromRGB(160, 160, 160)
+    keySub.Font  = Enum.Font.Gotham
+    keySub.TextSize = 13
+    keySub.Text  = "Insira sua key para continuar • Validade: 10 horas"
+    keySub.Parent = KeyFrame
+
+    -- TextBox
+    local keyBox = Instance.new("TextBox")
+    keyBox.Size  = UDim2.new(1, -40, 0, 44)
+    keyBox.Position = UDim2.new(0, 20, 0, 82)
+    keyBox.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    keyBox.TextColor3 = Color3.fromRGB(220, 220, 220)
+    keyBox.PlaceholderText = "Digite sua key aqui..."
+    keyBox.PlaceholderColor3 = Color3.fromRGB(80, 80, 80)
+    keyBox.Font  = Enum.Font.Gotham
+    keyBox.TextSize = 14
+    keyBox.ClearTextOnFocus = false
+    keyBox.BorderSizePixel = 0
+    keyBox.Text  = ""
+    keyBox.Parent = KeyFrame
+    Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0, 10)
+    applyRGBStroke(keyBox, 2)
+
+    -- Status
+    local statusLbl = Instance.new("TextLabel")
+    statusLbl.Size  = UDim2.new(1, -40, 0, 22)
+    statusLbl.Position = UDim2.new(0, 20, 0, 132)
+    statusLbl.BackgroundTransparency = 1
+    statusLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+    statusLbl.Font  = Enum.Font.GothamBold
+    statusLbl.TextSize = 13
+    statusLbl.Text  = ""
+    statusLbl.Parent = KeyFrame
+
+    -- Submit
+    local submitBtn = Instance.new("TextButton")
+    submitBtn.Size  = UDim2.new(1, -40, 0, 42)
+    submitBtn.Position = UDim2.new(0, 20, 0, 158)
+    submitBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    submitBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    submitBtn.Font  = Enum.Font.GothamBold
+    submitBtn.TextSize = 16
+    submitBtn.Text  = "SUBMIT"
+    submitBtn.BorderSizePixel = 0
+    submitBtn.Parent = KeyFrame
+    Instance.new("UICorner", submitBtn).CornerRadius = UDim.new(0, 12)
+    applyRGBStroke(submitBtn, 2)
+
+    -- Get Key
+    local getKeyBtn = Instance.new("TextButton")
+    getKeyBtn.Size  = UDim2.new(1, -40, 0, 34)
+    getKeyBtn.Position = UDim2.new(0, 20, 0, 208)
+    getKeyBtn.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    getKeyBtn.TextColor3 = Color3.fromRGB(140, 200, 255)
+    getKeyBtn.Font  = Enum.Font.GothamBold
+    getKeyBtn.TextSize = 13
+    getKeyBtn.Text  = "📋 GET KEY"
+    getKeyBtn.BorderSizePixel = 0
+    getKeyBtn.Parent = KeyFrame
+    Instance.new("UICorner", getKeyBtn).CornerRadius = UDim.new(0, 10)
+
+    getKeyBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclipboard(KEY_LINK) end)
+        pcall(function()
+            if syn and syn.open_url then syn.open_url(KEY_LINK)
+            elseif openurl then openurl(KEY_LINK) end
+        end)
+        showNotif("🔗 Link copiado!", Color3.fromRGB(140, 200, 255))
+        getKeyBtn.Text = "✅ Copiado!"
+        task.delay(2, function()
+            if getKeyBtn and getKeyBtn.Parent then
+                getKeyBtn.Text = "📋 GET KEY"
+            end
+        end)
+    end)
+
+    submitBtn.MouseButton1Click:Connect(function()
+        local entered = keyBox.Text
+        if entered ~= CORRECT_KEY then
+            statusLbl.TextColor3 = Color3.fromRGB(255, 60, 60)
+            statusLbl.Text = "❌ Key inválida!"
+            keyBox.BackgroundColor3 = Color3.fromRGB(50, 10, 10)
+            task.delay(0.3, function()
+                if keyBox and keyBox.Parent then
+                    keyBox.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+                end
+            end)
+        else
+            -- Ativa sessão de 10 horas
+            getgenv().PudimSession.valid     = true
+            getgenv().PudimSession.startTime = os.time()
+            getgenv().PudimSession.userId    = LP.UserId
+            saveSession()
+            statusLbl.TextColor3 = Color3.fromRGB(80, 255, 120)
+            statusLbl.Text = "✅ Key aceita! Válida por 10 horas!"
+            task.wait(0.9)
+            KeyGui:Destroy()
+            openMainHub()
+        end
+    end)
+end
+
+-- ============================================================
+-- HUB PRINCIPAL COM SCROLL ROLÁVEL
+-- ============================================================
+function openMainHub()
+
+    -- Remove hub antigo se existir
+    pcall(function()
+        local old = LP.PlayerGui:FindFirstChild("PudimHub")
+        if old then old:Destroy() end
+    end)
+
+    local HubGui = Instance.new("ScreenGui")
+    HubGui.Name  = "PudimHub"
+    HubGui.ResetOnSpawn = false
+    HubGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    HubGui.Parent = LP.PlayerGui
+
+    -- ── Botão flutuante ──────────────────────────────────────
+    local floatBtn = Instance.new("TextButton")
+    floatBtn.Size  = UDim2.new(0, 62, 0, 62)
+    floatBtn.Position = UDim2.new(0, 30, 0.5, -31)
+    floatBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    floatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    floatBtn.Font  = Enum.Font.GothamBold
+    floatBtn.TextSize = 10
+    floatBtn.Text  = "PUDIM"
+    floatBtn.BorderSizePixel = 0
+    floatBtn.ZIndex = 10
+    floatBtn.Parent = HubGui
+    Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(1, 0)
+    applyRGBStroke(floatBtn, 3)
+    makeDraggable(floatBtn)
+    RunService.RenderStepped:Connect(function()
+        if floatBtn and floatBtn.Parent then
+            floatBtn.TextColor3 = getRainbowColor(1)
+        end
+    end)
+
+    local hubOpen = false
+
+    -- ── Frame principal ──────────────────────────────────────
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name  = "MainFrame"
+    MainFrame.Size  = UDim2.new(0, 340, 0, 580)
+    MainFrame.Position = UDim2.new(0, 110, 0.5, -290)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = false
+    MainFrame.Active  = true
+    MainFrame.ZIndex  = 5
+    MainFrame.Parent  = HubGui
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 16)
+    applyRGBStroke(MainFrame, 3)
+    makeDraggable(MainFrame)
+
+    -- ── Título do hub ─────────────────────────────────────────
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size  = UDim2.new(1, 0, 0, 44)
+    titleLbl.Position = UDim2.new(0, 0, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font  = Enum.Font.GothamBold
+    titleLbl.TextSize = 20
+    titleLbl.Text  = "🍮 PUDIMSTEAL HUB v3.0"
+    titleLbl.Parent = MainFrame
+    RunService.RenderStepped:Connect(function()
+        if titleLbl and titleLbl.Parent then
+            titleLbl.TextColor3 = getRainbowColor()
+        end
+    end)
+
+    -- ── Fechar ────────────────────────────────────────────────
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size  = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -36, 0, 7)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font  = Enum.Font.GothamBold
+    closeBtn.TextSize = 16
+    closeBtn.Text  = "✕"
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Parent = MainFrame
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+    closeBtn.MouseButton1Click:Connect(function()
+        MainFrame.Visible = false
+        hubOpen = false
+    end)
+
+    -- ── Separador ────────────────────────────────────────────
+    local sep = Instance.new("Frame")
+    sep.Size  = UDim2.new(1, -20, 0, 1)
+    sep.Position = UDim2.new(0, 10, 0, 45)
+    sep.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    sep.BorderSizePixel = 0
+    sep.Parent = MainFrame
+
+    -- ══════════════════════════════════════════════════════════
+    -- ÁREA ROLÁVEL (ScrollingFrame) — todas as features aqui
+    -- ══════════════════════════════════════════════════════════
+    local scrollArea = Instance.new("ScrollingFrame")
+    scrollArea.Name  = "ScrollArea"
+    scrollArea.Size  = UDim2.new(1, 0, 0, 390) -- altura da área de scroll
+    scrollArea.Position = UDim2.new(0, 0, 0, 48)
+    scrollArea.BackgroundTransparency = 1
+    scrollArea.BorderSizePixel = 0
+    scrollArea.ScrollBarThickness = 5
+    scrollArea.ScrollBarImageColor3 = Color3.fromRGB(180, 0, 255)
+    scrollArea.CanvasSize = UDim2.new(0, 0, 0, 0) -- será ajustado automaticamente
+    scrollArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollArea.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollArea.ElasticBehavior = Enum.ElasticBehavior.Always
+    scrollArea.Parent = MainFrame
+
+    -- Layout automático dentro do scroll
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding   = UDim.new(0, 6)
+    listLayout.Parent    = scrollArea
+
+    local listPad = Instance.new("UIPadding")
+    listPad.PaddingLeft   = UDim.new(0, 10)
+    listPad.PaddingRight  = UDim.new(0, 10)
+    listPad.PaddingTop    = UDim.new(0, 6)
+    listPad.PaddingBottom = UDim.new(0, 6)
+    listPad.Parent        = scrollArea
+
+    -- ── Helper: criar toggle ──────────────────────────────────
+    local function createToggle(parent, icon, label, flagKey, callback)
+        local row = Instance.new("Frame")
+        row.Size  = UDim2.new(1, 0, 0, 46)
+        row.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+        row.BorderSizePixel = 0
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+        local txt = Instance.new("TextLabel")
+        txt.Size  = UDim2.new(1, -70, 1, 0)
+        txt.Position = UDim2.new(0, 12, 0, 0)
+        txt.BackgroundTransparency = 1
+        txt.TextColor3 = Color3.fromRGB(230, 230, 230)
+        txt.Font  = Enum.Font.GothamBold
+        txt.TextSize = 14
+        txt.TextXAlignment = Enum.TextXAlignment.Left
+        txt.Text  = icon .. " " .. label
+        txt.Parent = row
+
+        local btn = Instance.new("TextButton")
+        btn.Size  = UDim2.new(0, 52, 0, 28)
+        btn.Position = UDim2.new(1, -62, 0.5, -14)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font  = Enum.Font.GothamBold
+        btn.TextSize = 12
+        btn.Text  = "OFF"
+        btn.BorderSizePixel = 0
+        btn.Parent = row
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+        btn.MouseButton1Click:Connect(function()
+            F[flagKey] = not F[flagKey]
+            if F[flagKey] then
+                btn.Text = "ON"
+                btn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+                TweenService:Create(btn, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(0, 200, 90)
+                }):Play()
+            else
+                btn.Text = "OFF"
+                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            end
+            if callback then callback(F[flagKey]) end
+        end)
+
+        return btn
+    end
+
+    -- ── Helper: criar botão de ação ───────────────────────────
+    local function createActionBtn(parent, icon, label, callback)
+        local btn = Instance.new("TextButton")
+        btn.Size  = UDim2.new(1, 0, 0, 44)
+        btn.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font  = Enum.Font.GothamBold
+        btn.TextSize = 14
+        btn.Text  = icon .. " " .. label
+        btn.BorderSizePixel = 0
+        btn.Parent = parent
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+        applyRGBStroke(btn, 1)
+        btn.MouseButton1Click:Connect(function()
+            if callback then callback() end
+        end)
+        return btn
+    end
+
+    -- ── Seção: título de grupo ────────────────────────────────
+    local function createSection(parent, title)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size  = UDim2.new(1, 0, 0, 28)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+        lbl.Font  = Enum.Font.GothamBold
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Text  = "  ─── " .. title .. " ───"
+        lbl.Parent = parent
+    end
+
+    -- ══════════════════════════════════════════════════════════
+    -- FEATURES DENTRO DO SCROLL
+    -- ══════════════════════════════════════════════════════════
+
+    createSection(scrollArea, "MOVIMENTO")
+
+    createToggle(scrollArea, "🚫", "NoClip", "NoClip", function(state)
+        showNotif(state and "✅ NoClip ATIVADO" or "❌ NoClip desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "♾️", "Infinite Jump", "InfJump", function(state)
+        showNotif(state and "✅ Inf Jump ATIVADO" or "❌ Inf Jump desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createSection(scrollArea, "VISUALS")
+
+    createToggle(scrollArea, "👁️", "ESP Players", "ESP", function(state)
+        if not state then
+            for _, v in pairs(espObjects) do pcall(function() v:Destroy() end) end
+            espObjects = {}
+        end
+        showNotif(state and "✅ ESP ATIVADO" or "❌ ESP desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "🔳", "X-Ray Walls", "XRay", function(state)
+        if not state then
+            for _, v in pairs(xrayParts) do
+                pcall(function() v.LocalTransparencyModifier = 0 end)
+            end
+            xrayParts = {}
+        end
+        showNotif(state and "✅ X-Ray ATIVADO" or "❌ X-Ray desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "👻", "Invisível", "Invisible", function(state)
+        pcall(function()
+            local char = LP.Character
+            if char then
+                for _, p in pairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") or p:IsA("Decal") then
+                        p.LocalTransparencyModifier = state and 1 or 0
+                    end
+                end
+            end
+        end)
+        showNotif(state and "✅ Invisível ATIVADO" or "❌ Invisível desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createSection(scrollArea, "STEAL / AUTO")
+
+    createToggle(scrollArea, "🤖", "Auto Steal", "AutoSteal", function(state)
+        showNotif(state and "✅ Auto Steal ATIVADO" or "❌ Auto Steal desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "🦶", "Auto Kick", "AutoKick", function(state)
+        showNotif(state and "✅ Auto Kick ATIVADO" or "❌ Auto Kick desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "🔘", "Auto Proximity", "AutoProximity", function(state)
+        showNotif(state and "✅ Auto Proximity ATIVADO" or "❌ Auto Proximity desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createToggle(scrollArea, "🛡️", "Anti Ragdoll", "AntiRagdoll", function(state)
+        showNotif(state and "✅ Anti Ragdoll ATIVADO" or "❌ Anti Ragdoll desativado",
+            state and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80))
+    end)
+
+    createSection(scrollArea, "SERVIDOR")
+
+    createActionBtn(scrollArea, "🔀", "Server Hop", function()
+        -- Seta flag de auto-execute antes de hop
+        getgenv().PudimAutoExec = true
+        serverHop()
+    end)
+
+    createActionBtn(scrollArea, "📍", "Salvar Posição", function()
+        pcall(function()
+            local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                F.SavedCFrame = hrp.CFrame
+                showNotif("📍 Posição salva!", Color3.fromRGB(255, 220, 60))
+            end
+        end)
+    end)
+
+    createActionBtn(scrollArea, "🚀", "Teleportar (Posição Salva)", function()
+        pcall(function()
+            if F.SavedCFrame then
+                local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = F.SavedCFrame
+                    showNotif("🚀 Teleportado!", Color3.fromRGB(100, 200, 255))
+                end
+            else
+                showNotif("⚠️ Salve uma posição antes!", Color3.fromRGB(255, 180, 50))
+            end
+        end)
+    end)
+
+    createActionBtn(scrollArea, "⬆️", "TP para Cima (anti-stuck)", function()
+        pcall(function()
+            local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = hrp.CFrame + Vector3.new(0, 20, 0)
+                showNotif("⬆️ Teleportado para cima!", Color3.fromRGB(100, 200, 255))
+            end
+        end)
+    end)
+
+    -- ══════════════════════════════════════════════════════════
+    -- RODAPÉ: Tempo restante + Foto de perfil
+    -- ══════════════════════════════════════════════════════════
+    local footerFrame = Instance.new("Frame")
+    footerFrame.Name  = "Footer"
+    footerFrame.Size  = UDim2.new(1, 0, 0, 120)
+    footerFrame.Position = UDim2.new(0, 0, 1, -122)
+    footerFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+    footerFrame.BorderSizePixel = 0
+    footerFrame.ZIndex = 6
+    footerFrame.Parent = MainFrame
+    local ffCorner = Instance.new("UICorner")
+    ffCorner.CornerRadius = UDim.new(0, 16)
+    ffCorner.Parent = footerFrame
+
+    -- Separador do footer
+    local footSep = Instance.new("Frame")
+    footSep.Size  = UDim2.new(1, -20, 0, 1)
+    footSep.Position = UDim2.new(0, 10, 0, 0)
+    footSep.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    footSep.BorderSizePixel = 0
+    footSep.Parent = footerFrame
+
+    -- Label "Tempo restante"
+    local timeTitle = Instance.new("TextLabel")
+    timeTitle.Size  = UDim2.new(1, 0, 0, 18)
+    timeTitle.Position = UDim2.new(0, 0, 0, 8)
+    timeTitle.BackgroundTransparency = 1
+    timeTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+    timeTitle.Font  = Enum.Font.Gotham
+    timeTitle.TextSize = 11
+    timeTitle.Text  = "⏱️ KEY VÁLIDA POR:"
+    timeTitle.ZIndex = 7
+    timeTitle.Parent = footerFrame
+
+    -- Timer grande
+    local timerLbl = Instance.new("TextLabel")
+    timerLbl.Name  = "TimerLbl"
+    timerLbl.Size  = UDim2.new(0, 180, 0, 32)
+    timerLbl.Position = UDim2.new(0, 10, 0, 26)
+    timerLbl.BackgroundTransparency = 1
+    timerLbl.Font  = Enum.Font.GothamBold
+    timerLbl.TextSize = 22
+    timerLbl.Text  = getTimeLeft()
+    timerLbl.TextXAlignment = Enum.TextXAlignment.Left
+    timerLbl.ZIndex = 7
+    timerLbl.Parent = footerFrame
+    RunService.RenderStepped:Connect(function()
+        if timerLbl and timerLbl.Parent then
+            timerLbl.TextColor3 = getRainbowColor(2)
+            -- Atualiza o timer (não todo frame por performance)
+        end
+    end)
+    -- Atualiza timer a cada segundo
+    task.spawn(function()
+        while timerLbl and timerLbl.Parent do
+            local tl = getTimeLeft()
+            timerLbl.Text = tl
+            if tl == "EXPIRADA" then
+                timerLbl.TextColor3 = Color3.fromRGB(255, 60, 60)
+                showNotif("⚠️ Key expirada! Execute o script novamente.", Color3.fromRGB(255, 80, 80))
+                task.wait(2)
+                HubGui:Destroy()
+                break
+            end
+            task.wait(1)
+        end
+    end)
+
+    -- ── Foto de perfil do player ──────────────────────────────
+    local avatarImg = Instance.new("ImageLabel")
+    avatarImg.Name  = "AvatarImg"
+    avatarImg.Size  = UDim2.new(0, 52, 0, 52)
+    avatarImg.Position = UDim2.new(1, -62, 0, 10)
+    avatarImg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    avatarImg.BorderSizePixel = 0
+    avatarImg.ZIndex = 7
+    avatarImg.Image  = ""
+    avatarImg.Parent = footerFrame
+    Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1, 0)
+    applyRGBStroke(avatarImg, 2)
+
+    -- Busca a foto de perfil do player via API do Roblox
+    task.spawn(function()
+        pcall(function()
+            local userId = LP.UserId
+            local thumbType = Enum.ThumbnailType.HeadShot
+            local thumbSize = Enum.ThumbnailSize.Size100x100
+            local content, isReady = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
+            if content and avatarImg and avatarImg.Parent then
+                avatarImg.Image = content
+            end
+        end)
+    end)
+
+    -- Nome do player abaixo da foto
+    local playerNameLbl = Instance.new("TextLabel")
+    playerNameLbl.Size  = UDim2.new(0, 180, 0, 16)
+    playerNameLbl.Position = UDim2.new(0, 10, 0, 62)
+    playerNameLbl.BackgroundTransparency = 1
+    playerNameLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    playerNameLbl.Font  = Enum.Font.GothamBold
+    playerNameLbl.TextSize = 11
+    playerNameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    playerNameLbl.Text  = "👤 " .. LP.Name
+    playerNameLbl.ZIndex = 7
+    playerNameLbl.Parent = footerFrame
+
+    -- Status da key
+    local keyStatusLbl = Instance.new("TextLabel")
+    keyStatusLbl.Size  = UDim2.new(0, 200, 0, 14)
+    keyStatusLbl.Position = UDim2.new(0, 10, 0, 80)
+    keyStatusLbl.BackgroundTransparency = 1
+    keyStatusLbl.TextColor3 = Color3.fromRGB(0, 220, 100)
+    keyStatusLbl.Font  = Enum.Font.Gotham
+    keyStatusLbl.TextSize = 10
+    keyStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+    keyStatusLbl.Text  = "🔑 Key Ativa • PudimSteal v3.0"
+    keyStatusLbl.ZIndex = 7
+    keyStatusLbl.Parent = footerFrame
+
+    -- ── Botão flutuante toggle ────────────────────────────────
+    floatBtn.MouseButton1Click:Connect(function()
+        hubOpen = not hubOpen
+        MainFrame.Visible = hubOpen
+        if hubOpen then
+            TweenService:Create(MainFrame, TweenInfo.new(0.2), {
+                Size = UDim2.new(0, 340, 0, 580)
+            }):Play()
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════
+-- LÓGICA PRINCIPAL DE INICIALIZAÇÃO
+-- ══════════════════════════════════════════════════════════
+local function init()
+    -- Verifica se a sessão já está válida (veio de server hop ou já logou)
+    if getgenv().PudimSession.valid then
+        local elapsed = os.time() - getgenv().PudimSession.startTime
+        if elapsed < KEY_DURATION then
+            -- Sessão válida: abre hub direto SEM pedir key
+            showNotif("🍮 PudimSteal carregado! Key válida.", Color3.fromRGB(100, 255, 100))
+            task.wait(0.5)
+            openMainHub()
+            return
+        else
+            -- Sessão expirou
+            getgenv().PudimSession.valid = false
+            pcall(function()
+                if isfile and isfile(KEY_SAVE_FILE) then
+                    delfile(KEY_SAVE_FILE)
+                end
+            end)
+        end
+    end
+    -- Sem sessão válida: mostra key system
+    openKeyGui()
+end
+
+-- ══════════════════════════════════════════════════════════
+-- LOOPS DE GAMEPLAY (NoClip, ESP, Auto Steal, etc.)
+-- ══════════════════════════════════════════════════════════
+
+-- NoClip
+RunService.Stepped:Connect(function()
+    if F.NoClip then
+        pcall(function()
+            local char = LP.Character
+            if char then
+                for _, p in pairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if F.InfJump then
+        pcall(function()
+            local char = LP.Character
+            local hum  = char and char:FindFirstChild("Humanoid")
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end
+end)
+
+-- ESP
+RunService.RenderStepped:Connect(function()
+    if F.ESP then
+        for _, v in pairs(Players:GetPlayers()) do
+            if v ~= LP and v.Character then
+                local hrp = v.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and not espObjects[v.Name] then
+                    local bb = Instance.new("BillboardGui")
+                    bb.Size  = UDim2.new(0, 80, 0, 24)
+                    bb.StudsOffset = Vector3.new(0, 3, 0)
+                    bb.AlwaysOnTop = true
+                    bb.Parent = hrp
+                    local lbl2 = Instance.new("TextLabel")
+                    lbl2.Size  = UDim2.new(1, 0, 1, 0)
+                    lbl2.BackgroundTransparency = 1
+                    lbl2.TextColor3 = Color3.fromRGB(255, 50, 50)
+                    lbl2.Font  = Enum.Font.GothamBold
+                    lbl2.TextSize = 14
+                    lbl2.Text  = v.Name
+                    lbl2.Parent = bb
+                    espObjects[v.Name] = bb
+                end
+            end
+        end
+    else
+        for k, v in pairs(espObjects) do
+            pcall(function() v:Destroy() end)
+            espObjects[k] = nil
+        end
+    end
+end)
+
+-- X-Ray
+RunService.RenderStepped:Connect(function()
+    if F.XRay then
+        for _, p in pairs(workspace:GetDescendants()) do
+            if p:IsA("BasePart") and not p:IsDescendantOf(LP.Character or Instance.new("Model")) then
+                if not table.find(xrayParts, p) then
+                    table.insert(xrayParts, p)
+                end
+                p.LocalTransparencyModifier = 0.85
+            end
+        end
+    end
+end)
+
+-- Auto Steal (ProximityPrompt com "steal" no nome)
+RunService.Heartbeat:Connect(function()
+    if F.AutoSteal then
+        pcall(function()
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("ProximityPrompt") then
+                    local n = obj.ActionText:lower() .. obj.ObjectText:lower()
+                    if n:find("steal") or n:find("roubar") or n:find("grab") then
+                        if not managedPrompts[obj] then
+                            managedPrompts[obj] = true
+                            fireproximityprompt(obj)
+                        end
+                    end
+                end
+            end
+            -- Reseta cache a cada ciclo para re-ativar
+            task.wait(0.5)
+            managedPrompts = {}
+        end)
+    end
+end)
+
+-- Auto Proximity (todos os prompts)
+RunService.Heartbeat:Connect(function()
+    if F.AutoProximity then
+        pcall(function()
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("ProximityPrompt") then
+                    fireproximityprompt(obj)
+                end
+            end
+        end)
+    end
+end)
+
+-- Anti Ragdoll
+RunService.Heartbeat:Connect(function()
+    if F.AntiRagdoll then
+        pcall(function()
+            local char = LP.Character
+            local hum  = char and char:FindFirstChild("Humanoid")
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+        end)
+    end
+end)
+
+-- Auto Kick
+RunService.Heartbeat:Connect(function()
+    if F.AutoKick then
+        pcall(function()
+            local char = LP.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, v in pairs(Players:GetPlayers()) do
+                    if v ~= LP and v.Character then
+                        local vHrp = v.Character:FindFirstChild("HumanoidRootPart")
+                        local vHum = v.Character:FindFirstChild("Humanoid")
+                        if vHrp and vHum then
+                            local dist = (hrp.Position - vHrp.Position).Magnitude
+                            if dist < 12 then
+                                vHum.Health = 0
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+-- INICIA O SCRIPT
+-- ══════════════════════════════════════════════════════════
+init()
